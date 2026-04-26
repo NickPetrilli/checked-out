@@ -31,6 +31,7 @@ export interface ParsedGame {
   pgn: string;
   timeControl: string;
   result: 'white' | 'black' | 'draw';
+  gameType: 'online' | 'computer';
 }
 
 export interface GameMove {

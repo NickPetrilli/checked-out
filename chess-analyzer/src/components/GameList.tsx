@@ -4,8 +4,9 @@ import { useChessGamesContext } from '../context/ChessGamesContext';
 
 const PAGE_SIZE = 50;
 
-type ColorFilter = 'all' | 'white' | 'black';
-type ResultFilter = 'all' | 'wins' | 'losses' | 'draws';
+type ColorFilter    = 'all' | 'white' | 'black';
+type ResultFilter   = 'all' | 'wins' | 'losses' | 'draws';
+type GameTypeFilter = 'all' | 'online' | 'computer';
 
 interface GameListProps {
   games: ParsedGame[];
@@ -33,8 +34,9 @@ function playerResultFor(game: ParsedGame, username: string): 'win' | 'loss' | '
 
 export default function GameList({ games, selectedGame, onSelectGame }: GameListProps) {
   const { username } = useChessGamesContext();
-  const [colorFilter, setColorFilter] = useState<ColorFilter>('all');
-  const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
+  const [colorFilter,    setColorFilter]    = useState<ColorFilter>('all');
+  const [resultFilter,   setResultFilter]   = useState<ResultFilter>('all');
+  const [gameTypeFilter, setGameTypeFilter] = useState<GameTypeFilter>('all');
   const [page, setPage] = useState(0);
 
   const filtered = useMemo(() => {
@@ -50,9 +52,10 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
         if (resultFilter === 'losses' && pr !== 'loss') return false;
         if (resultFilter === 'draws' && pr !== 'draw') return false;
       }
+      if (gameTypeFilter !== 'all' && game.gameType !== gameTypeFilter) return false;
       return true;
     });
-  }, [games, colorFilter, resultFilter, username]);
+  }, [games, colorFilter, resultFilter, gameTypeFilter, username]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.length > PAGE_SIZE
@@ -91,6 +94,16 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
             { value: 'draws', label: 'Draws' },
           ]}
           onChange={(v) => { setResultFilter(v as ResultFilter); handleFilterChange(); }}
+        />
+        <FilterSelect
+          label="Opponent"
+          value={gameTypeFilter}
+          options={[
+            { value: 'all',      label: 'All opponents' },
+            { value: 'online',   label: 'Online' },
+            { value: 'computer', label: 'vs Computer/Coach' },
+          ]}
+          onChange={(v) => { setGameTypeFilter(v as GameTypeFilter); handleFilterChange(); }}
         />
         <span className="ml-auto text-xs text-gray-500 self-center">
           {filtered.length} game{filtered.length !== 1 ? 's' : ''}

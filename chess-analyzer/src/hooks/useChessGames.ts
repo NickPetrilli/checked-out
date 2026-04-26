@@ -10,12 +10,30 @@ function deriveResult(game: ChessComGame): ParsedGame['result'] {
   return 'draw';
 }
 
+const COMPUTER_USERNAME_PATTERNS = /computer|stockfish|komodo|leela|bot\b|coach/i;
+const COMPUTER_EVENT_PATTERNS    = /computer|coach|lesson|drill|puzzle/i;
+
+function detectGameType(raw: ChessComGame, pgnHeaders: Record<string, string>): ParsedGame['gameType'] {
+  const event = pgnHeaders['Event'] ?? '';
+  if (COMPUTER_EVENT_PATTERNS.test(event)) return 'computer';
+
+  const white = raw.white.username;
+  const black = raw.black.username;
+  if (COMPUTER_USERNAME_PATTERNS.test(white) || COMPUTER_USERNAME_PATTERNS.test(black)) {
+    return 'computer';
+  }
+
+  return 'online';
+}
+
 function parseGame(raw: ChessComGame): ParsedGame {
   let date = new Date(raw.end_time * 1000).toISOString().slice(0, 10);
+  let headers: Record<string, string> = {};
   try {
     const chess = new Chess();
     chess.loadPgn(raw.pgn);
-    const pgnDate = chess.header()['Date'];
+    headers = chess.header();
+    const pgnDate = headers['Date'];
     if (pgnDate) date = pgnDate.replace(/\./g, '-');
   } catch {
     // fall back to end_time-derived date
@@ -33,6 +51,7 @@ function parseGame(raw: ChessComGame): ParsedGame {
     pgn: raw.pgn,
     timeControl: raw.time_control,
     result: deriveResult(raw),
+    gameType: detectGameType(raw, headers),
   };
 }
 
