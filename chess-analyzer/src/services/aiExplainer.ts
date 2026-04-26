@@ -44,7 +44,7 @@ Without any greeting or preamble, explain directly:
   const body = {
     contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${userPrompt}` }] }],
     generationConfig: {
-      maxOutputTokens: 600,
+      maxOutputTokens: 1024,
       temperature: 0.4,
     },
   };
@@ -65,11 +65,29 @@ Without any greeting or preamble, explain directly:
     }
 
     const data = await res.json() as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      candidates?: {
+        content?:      { parts?: { text?: string }[] };
+        finishReason?: string;
+      }[];
     };
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate    = data.candidates?.[0];
+    const text         = candidate?.content?.parts?.[0]?.text;
+    const finishReason = candidate?.finishReason;
+
     if (!text) throw new Error('Empty response from Gemini');
+
+    if (finishReason === 'MAX_TOKENS') {
+      // Trim to last complete sentence so we never show a mid-word cutoff
+      const lastPeriod = Math.max(
+        text.lastIndexOf('. '),
+        text.lastIndexOf('! '),
+        text.lastIndexOf('? '),
+      );
+      const trimmed = lastPeriod > 0 ? text.slice(0, lastPeriod + 1) : text;
+      return trimmed.trim();
+    }
+
     return text.trim();
   } catch {
     return 'Unable to generate explanation. Please try again.';
