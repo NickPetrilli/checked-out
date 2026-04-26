@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Chess } from 'chess.js';
 import { Link } from 'react-router-dom';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, Palette } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import GameList from '../components/GameList';
 import { useChessGamesContext } from '../context/ChessGamesContext';
@@ -34,6 +34,26 @@ const MISTAKE_THRESHOLD = 100;
 const RIGHT_MIN_WIDTH   = 200;
 const RIGHT_MAX_WIDTH   = 560;
 const RIGHT_DEFAULT     = 300;
+
+// ── Board themes ─────────────────────────────────────────────────────────────
+
+const BOARD_THEMES = [
+  { id: 'classic',    name: 'Classic',    light: '#eeeed2', dark: '#769656' },
+  { id: 'walnut',     name: 'Walnut',     light: '#f0d9b5', dark: '#b58863' },
+  { id: 'ocean',      name: 'Ocean',      light: '#dee3e6', dark: '#8ca2ad' },
+  { id: 'lavender',   name: 'Lavender',   light: '#f0e4ff', dark: '#7c5cbf' },
+  { id: 'coral',      name: 'Coral',      light: '#f5dbd5', dark: '#b85040' },
+  { id: 'teal',       name: 'Teal',       light: '#d4ede8', dark: '#3a9e8a' },
+  { id: 'tournament', name: 'Tournament', light: '#d8d8d8', dark: '#6e6e6e' },
+  { id: 'night',      name: 'Night',      light: '#b8a898', dark: '#3a2a1e' },
+] as const;
+
+type BoardTheme = typeof BOARD_THEMES[number];
+
+function loadSavedTheme(): BoardTheme {
+  const saved = localStorage.getItem('chessboard-theme');
+  return BOARD_THEMES.find(t => t.id === saved) ?? BOARD_THEMES[0];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -493,20 +513,34 @@ export default function Analyzer() {
   const [engineError,          setEngineError]          = useState<string | null>(null);
   const [leftOpen,             setLeftOpen]             = useState(true);
   const [rightWidth,           setRightWidth]           = useState(RIGHT_DEFAULT);
+  const [boardTheme,           setBoardTheme]           = useState<BoardTheme>(loadSavedTheme);
+  const [themePickerOpen,      setThemePickerOpen]      = useState(false);
   const [explanations,         setExplanations]         = useState<Record<number, string>>({});
   const [loadingExplainPly,    setLoadingExplainPly]    = useState<number | null>(null);
   const [activeExplanationPly, setActiveExplanationPly] = useState<number | null>(null);
 
-  const cancelRef     = useRef(0);
-  const isDraggingRef = useRef(false);
-  const dragStartXRef = useRef(0);
-  const dragStartWRef = useRef(0);
+  const cancelRef       = useRef(0);
+  const isDraggingRef   = useRef(false);
+  const dragStartXRef   = useRef(0);
+  const dragStartWRef   = useRef(0);
+  const themePickerRef  = useRef<HTMLDivElement>(null);
 
   // Pre-warm engine
   useEffect(() => {
     ensureEngineReady().catch((err: unknown) => {
       setEngineError(err instanceof Error ? err.message : 'Failed to load chess engine.');
     });
+  }, []);
+
+  // Close theme picker on outside click
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setThemePickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
   // ── Right-panel drag-to-resize ──────────────────────────────────────────────
@@ -722,6 +756,56 @@ export default function Analyzer() {
         aria-label="Chess board and controls"
         className="flex flex-col items-center justify-start gap-3 p-4 overflow-y-auto flex-1 min-w-0"
       >
+        {/* Theme picker */}
+        <div style={{ width: 'min(100%, calc(100vh - 240px))' }} className="flex justify-end">
+          <div className="relative" ref={themePickerRef}>
+            <button
+              onClick={() => setThemePickerOpen(o => !o)}
+              aria-label="Change board theme"
+              title="Board theme"
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-200 hover:bg-gray-800 transition-colors"
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>Theme</span>
+            </button>
+
+            {themePickerOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-3 w-56">
+                <p className="text-xs font-semibold text-gray-400 mb-2.5 px-0.5">Board color</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {BOARD_THEMES.map(theme => (
+                    <button
+                      key={theme.id}
+                      onClick={() => {
+                        setBoardTheme(theme);
+                        localStorage.setItem('chessboard-theme', theme.id);
+                        setThemePickerOpen(false);
+                      }}
+                      aria-label={theme.name}
+                      title={theme.name}
+                      className={[
+                        'flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors',
+                        boardTheme.id === theme.id
+                          ? 'ring-2 ring-blue-500 bg-gray-800'
+                          : 'hover:bg-gray-800',
+                      ].join(' ')}
+                    >
+                      {/* 2×2 mini board swatch */}
+                      <div className="grid grid-cols-2 w-8 h-8 rounded-sm overflow-hidden border border-gray-700">
+                        <div style={{ backgroundColor: theme.light }} />
+                        <div style={{ backgroundColor: theme.dark }} />
+                        <div style={{ backgroundColor: theme.dark }} />
+                        <div style={{ backgroundColor: theme.light }} />
+                      </div>
+                      <span className="text-gray-400 text-xs leading-tight text-center">{theme.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Eval bar */}
         <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
           <div className="flex justify-between text-xs text-gray-500 mb-1" aria-hidden="true">
@@ -750,7 +834,12 @@ export default function Analyzer() {
 
         {/* Board */}
         <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
-          <ChessBoard fen={currentFen} bestMoveArrow={bestMoveArrow} />
+          <ChessBoard
+            fen={currentFen}
+            bestMoveArrow={bestMoveArrow}
+            darkSquareStyle={{ backgroundColor: boardTheme.dark }}
+            lightSquareStyle={{ backgroundColor: boardTheme.light }}
+          />
         </div>
 
         {/* White nameplate */}

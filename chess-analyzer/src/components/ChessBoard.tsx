@@ -5,9 +5,11 @@ interface ChessBoardProps {
   fen?: string;
   onMove?: (from: string, to: string) => boolean;
   bestMoveArrow?: { from: string; to: string } | null;
+  darkSquareStyle?: React.CSSProperties;
+  lightSquareStyle?: React.CSSProperties;
 }
 
-export default function ChessBoard({ fen, onMove, bestMoveArrow }: ChessBoardProps) {
+export default function ChessBoard({ fen, onMove, bestMoveArrow, darkSquareStyle, lightSquareStyle }: ChessBoardProps) {
   function handleDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare || !onMove) return false;
     return onMove(sourceSquare, targetSquare);
@@ -24,6 +26,8 @@ export default function ChessBoard({ fen, onMove, bestMoveArrow }: ChessBoardPro
           position: fen ?? 'start',
           onPieceDrop: onMove ? handleDrop : undefined,
           arrows,
+          ...(darkSquareStyle  && { darkSquareStyle }),
+          ...(lightSquareStyle && { lightSquareStyle }),
         }}
       />
     </div>
