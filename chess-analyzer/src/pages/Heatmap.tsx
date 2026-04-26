@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Chess } from 'chess.js';
 import HeatmapGrid from '../components/HeatmapGrid';
-import useChessGames from '../hooks/useChessGames';
+import { useChessGamesContext } from '../context/ChessGamesContext';
 import type { HeatmapData, Square } from '../types/chess';
 
 function buildHeatmap(pgns: string[]): Partial<HeatmapData> {
@@ -22,14 +22,8 @@ function buildHeatmap(pgns: string[]): Partial<HeatmapData> {
 }
 
 export default function Heatmap() {
-  const { games, loading, error, username, fetchGames } = useChessGames();
-  const [inputUsername, setInputUsername] = useState('');
+  const { games, loading, error } = useChessGamesContext();
   const [heatmap, setHeatmap] = useState<Partial<HeatmapData>>({});
-
-  function handleGenerate() {
-    if (!inputUsername) return;
-    fetchGames(inputUsername, 3).then(() => {});
-  }
 
   function handleBuild() {
     setHeatmap(buildHeatmap(games.map((g) => g.pgn)));
@@ -37,38 +31,30 @@ export default function Heatmap() {
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
-      <h2 className="text-2xl font-semibold text-gray-800">Move Heatmap</h2>
-      <p className="text-gray-500 text-sm">
-        See which squares are visited most often across your recent games.
-      </p>
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={inputUsername}
-          onChange={(e) => setInputUsername(e.target.value)}
-          placeholder="Chess.com username"
-          className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          onClick={handleGenerate}
-          disabled={loading || !username}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
-        >
-          {loading ? 'Loading...' : 'Fetch Games'}
-        </button>
-        <button
-          onClick={handleBuild}
-          disabled={games.length === 0}
-          className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
-        >
-          Build Heatmap
-        </button>
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-white">Move Heatmap</h2>
+        <p className="text-gray-400 text-sm mt-1">
+          See which squares are visited most often across your loaded games.
+        </p>
       </div>
 
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {loading && <p className="text-gray-400 text-sm">Loading games…</p>}
+      {error && <p className="text-red-400 text-sm">{error}</p>}
+
+      {!loading && games.length === 0 && !error && (
+        <p className="text-gray-500 text-sm">Fetch games on the Home page first.</p>
+      )}
+
       {games.length > 0 && (
-        <p className="text-gray-400 text-xs">{games.length} games loaded</p>
+        <>
+          <p className="text-gray-400 text-xs">{games.length} games available</p>
+          <button
+            onClick={handleBuild}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors text-sm"
+          >
+            Build Heatmap
+          </button>
+        </>
       )}
 
       <HeatmapGrid data={heatmap} />

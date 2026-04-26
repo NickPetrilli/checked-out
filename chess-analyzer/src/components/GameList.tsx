@@ -11,17 +11,17 @@ export default function GameList({ games, onSelect }: GameListProps) {
   }
 
   return (
-    <ul className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+    <ul className="divide-y divide-gray-700 border border-gray-700 rounded-lg overflow-hidden">
       {games.map((game) => (
         <li
           key={game.id}
-          className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer"
+          className="flex items-center justify-between px-4 py-3 hover:bg-gray-700 cursor-pointer transition-colors"
           onClick={() => onSelect?.(game)}
         >
-          <span className="font-medium text-sm">
+          <span className="font-medium text-sm text-gray-100">
             {game.white} vs {game.black}
           </span>
-          <span className="text-xs text-gray-500">{game.timeControl}</span>
+          <span className="text-xs text-gray-400">{game.timeControl}</span>
         </li>
       ))}
     </ul>
