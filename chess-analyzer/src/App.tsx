@@ -29,7 +29,7 @@ function NavBar() {
       <span className="mr-2 text-base font-bold text-white select-none" aria-hidden="true">
         ♟
       </span>
-      <span className="font-bold text-white text-base mr-auto">Chess Analyzer</span>
+      <span className="font-bold text-white text-base mr-auto">Checked Out</span>
 
       {/* Loaded-user chip */}
       {username && (
