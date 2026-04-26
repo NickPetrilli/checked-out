@@ -70,5 +70,5 @@ export async function getRecentGames(username: string, months: number): Promise<
   const archives = await getGameArchives(username);
   const recent = archives.slice(-months);
   const results = await Promise.all(recent.map(getGamesForMonth));
-  return results.flat();
+  return results.flat().reverse();
 }
