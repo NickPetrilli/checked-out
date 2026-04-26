@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Chess } from 'chess.js';
 import HeatmapGrid from '../components/HeatmapGrid';
-import { useChessGames } from '../hooks/useChessGames';
+import useChessGames from '../hooks/useChessGames';
 import type { HeatmapData, Square } from '../types/chess';
 
 function buildHeatmap(pgns: string[]): Partial<HeatmapData> {
@@ -22,13 +22,13 @@ function buildHeatmap(pgns: string[]): Partial<HeatmapData> {
 }
 
 export default function Heatmap() {
-  const { games, loading, error, fetchGames } = useChessGames();
-  const [username, setUsername] = useState('');
+  const { games, loading, error, username, fetchGames } = useChessGames();
+  const [inputUsername, setInputUsername] = useState('');
   const [heatmap, setHeatmap] = useState<Partial<HeatmapData>>({});
 
   function handleGenerate() {
-    if (!username) return;
-    fetchGames(username, 3).then(() => {});
+    if (!inputUsername) return;
+    fetchGames(inputUsername, 3).then(() => {});
   }
 
   function handleBuild() {
@@ -45,8 +45,8 @@ export default function Heatmap() {
       <div className="flex gap-2">
         <input
           type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={inputUsername}
+          onChange={(e) => setInputUsername(e.target.value)}
           placeholder="Chess.com username"
           className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />

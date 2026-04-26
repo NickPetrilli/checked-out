@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import GameList from '../components/GameList';
-import { useChessComGames } from '../hooks/useChessComGames';
-import type { ChessComGame } from '../types/chess';
+import useChessGames from '../hooks/useChessGames';
+import type { ParsedGame } from '../types/chess';
 
 export default function Analyzer() {
-  const { games, loading, error, fetchGames } = useChessComGames();
-  const [username, setUsername] = useState('');
+  const { games, loading, error, fetchGames, selectGame } = useChessGames();
+  const [inputUsername, setInputUsername] = useState('');
   const [chess] = useState(new Chess());
   const [fen, setFen] = useState(chess.fen());
 
@@ -21,7 +21,8 @@ export default function Analyzer() {
     }
   }
 
-  function handleSelectGame(game: ChessComGame) {
+  function handleSelectGame(game: ParsedGame) {
+    selectGame(game);
     chess.loadPgn(game.pgn);
     setFen(chess.fen());
   }
@@ -32,14 +33,14 @@ export default function Analyzer() {
         <div className="flex gap-2">
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={inputUsername}
+            onChange={(e) => setInputUsername(e.target.value)}
             placeholder="Chess.com username"
             className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
-            onClick={() => fetchGames(username)}
-            disabled={loading || !username}
+            onClick={() => fetchGames(inputUsername, 1)}
+            disabled={loading || !inputUsername}
             className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {loading ? '...' : 'Load'}
