@@ -101,16 +101,26 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
       {filtered.length === 0 ? (
         <p className="text-gray-500 text-center py-8 text-sm">No games match the current filters.</p>
       ) : (
-        <ul className="divide-y divide-gray-700/60 border border-gray-700 rounded-lg overflow-hidden">
+        <ul className="divide-y divide-gray-700/60 border border-gray-700 rounded-lg overflow-hidden" role="listbox" aria-label="Games">
           {paginated.map((game) => {
             const isSelected = selectedGame?.id === game.id;
             const pr = playerResultFor(game, username);
             return (
               <li
                 key={game.id}
+                role="option"
+                aria-selected={isSelected}
+                tabIndex={0}
                 onClick={() => onSelectGame(game)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectGame(game);
+                  }
+                }}
+                aria-label={`${game.white} vs ${game.black}, ${resultLabel(game.result)}, ${game.date}`}
                 className={[
-                  'flex flex-col px-3 py-2.5 cursor-pointer transition-colors text-sm gap-0.5',
+                  'flex flex-col px-3 py-2.5 cursor-pointer transition-colors text-sm gap-0.5 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500',
                   isSelected
                     ? 'bg-blue-900/50 border-l-2 border-blue-500'
                     : 'hover:bg-gray-800 border-l-2 border-transparent',

@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import HeatmapGrid from '../components/HeatmapGrid';
 import { useChessGamesContext } from '../context/ChessGamesContext';
+import useDebounce from '../hooks/useDebounce';
 import type { HeatmapData, Square } from '../types/chess';
 
 // ── Filter types ──────────────────────────────────────────────────────────────
@@ -27,17 +29,21 @@ function PillGroup<T extends string>({
   options,
   value,
   onChange,
+  groupLabel,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  groupLabel: string;
 }) {
   return (
-    <div className="flex rounded-lg overflow-hidden border border-gray-700">
+    <div role="group" aria-label={groupLabel} className="flex rounded-lg overflow-hidden border border-gray-700">
       {options.map((opt, i) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          aria-label={`${groupLabel}: ${opt.label}`}
           className={[
             'px-3 py-1.5 text-xs font-medium transition-colors',
             i > 0 && 'border-l border-gray-700',
@@ -94,6 +100,11 @@ export default function Heatmap() {
   const [moveType,     setMoveType]     = useState<MoveType>('to');
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
 
+  const debouncedFilters = useDebounce(
+    { pieceFilter, colorFilter, moveType, resultFilter },
+    150,
+  );
+
   // ── Step 1: parse all games once ───────────────────────────────────────────
   // Re-runs only when the games list or username changes.
   const allMoveEvents = useMemo<MoveEvent[]>(() => {
@@ -131,30 +142,31 @@ export default function Heatmap() {
 
   // ── Step 2: filter ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
+    const { pieceFilter: pf, colorFilter: cf, resultFilter: rf } = debouncedFilters;
     return allMoveEvents.filter((ev) => {
-      if (pieceFilter !== 'all' && ev.piece !== pieceFilter) return false;
-      if (colorFilter !== 'both' && ev.color !== colorFilter) return false;
-      if (resultFilter === 'wins'   && ev.userResult !== 'win')  return false;
-      if (resultFilter === 'losses' && ev.userResult !== 'loss') return false;
+      if (pf !== 'all' && ev.piece !== pf) return false;
+      if (cf !== 'both' && ev.color !== cf) return false;
+      if (rf === 'wins'   && ev.userResult !== 'win')  return false;
+      if (rf === 'losses' && ev.userResult !== 'loss') return false;
       return true;
     });
-  }, [allMoveEvents, pieceFilter, colorFilter, resultFilter]);
+  }, [allMoveEvents, debouncedFilters]);
 
   // ── Step 3: aggregate into 8×8 matrix ──────────────────────────────────────
   const heatmapData = useMemo<Partial<HeatmapData>>(() => {
     const counts: Partial<HeatmapData> = {};
     for (const ev of filtered) {
-      const sq = moveType === 'from' ? ev.from : ev.to;
+      const sq = debouncedFilters.moveType === 'from' ? ev.from : ev.to;
       counts[sq] = (counts[sq] ?? 0) + 1;
     }
     return counts;
-  }, [filtered, moveType]);
+  }, [filtered, debouncedFilters.moveType]);
 
   const totalMoves = filtered.length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col items-center gap-6 p-6 min-h-[calc(100vh-57px)]">
+    <div className="flex flex-col items-center gap-6 p-6 min-h-[calc(100vh-52px)]">
       {/* Header */}
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-white">Move Heatmap</h2>
@@ -167,7 +179,19 @@ export default function Heatmap() {
       {loading && <p className="text-gray-400 text-sm">Loading games…</p>}
       {error   && <p className="text-red-400 text-sm">{error}</p>}
       {!loading && !error && games.length === 0 && (
-        <p className="text-gray-500 text-sm">Fetch games on the Home page first.</p>
+        <div className="flex flex-col items-center gap-4 mt-16 text-center" role="status">
+          <p className="text-4xl select-none" aria-hidden="true">♟</p>
+          <p className="text-gray-300 font-medium">No games loaded</p>
+          <p className="text-gray-500 text-sm max-w-xs">
+            Fetch games for a player first to explore their move heatmap.
+          </p>
+          <Link
+            to="/"
+            className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Go to Home
+          </Link>
+        </div>
       )}
 
       {games.length > 0 && (
@@ -176,19 +200,19 @@ export default function Heatmap() {
           <div className="flex flex-wrap gap-3 justify-center">
             <div className="flex flex-col items-start gap-1">
               <span className="text-xs text-gray-500 font-medium px-1">Piece</span>
-              <PillGroup options={PIECE_OPTIONS} value={pieceFilter} onChange={setPieceFilter} />
+              <PillGroup options={PIECE_OPTIONS} value={pieceFilter} onChange={setPieceFilter} groupLabel="Piece" />
             </div>
             <div className="flex flex-col items-start gap-1">
               <span className="text-xs text-gray-500 font-medium px-1">Color</span>
-              <PillGroup options={COLOR_OPTIONS} value={colorFilter} onChange={setColorFilter} />
+              <PillGroup options={COLOR_OPTIONS} value={colorFilter} onChange={setColorFilter} groupLabel="Color" />
             </div>
             <div className="flex flex-col items-start gap-1">
               <span className="text-xs text-gray-500 font-medium px-1">Square type</span>
-              <PillGroup options={MOVETYPE_OPTIONS} value={moveType} onChange={setMoveType} />
+              <PillGroup options={MOVETYPE_OPTIONS} value={moveType} onChange={setMoveType} groupLabel="Square type" />
             </div>
             <div className="flex flex-col items-start gap-1">
               <span className="text-xs text-gray-500 font-medium px-1">Result</span>
-              <PillGroup options={RESULT_OPTIONS} value={resultFilter} onChange={setResultFilter} />
+              <PillGroup options={RESULT_OPTIONS} value={resultFilter} onChange={setResultFilter} groupLabel="Result" />
             </div>
           </div>
 
