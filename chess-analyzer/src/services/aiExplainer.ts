@@ -1,6 +1,17 @@
 const GEMINI_URL =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
+// In dev, call Gemini directly (key stays in gitignored .env).
+// In production, the /api/explain proxy keeps the key off the client bundle.
+function explainUrl(body: unknown): { url: string; bodyOverride?: unknown } {
+  if (import.meta.env.DEV) {
+    const key = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)?.trim();
+    if (!key) throw new Error('Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.');
+    return { url: `${GEMINI_URL}?key=${key}`, bodyOverride: body };
+  }
+  return { url: '/api/explain', bodyOverride: body };
+}
+
 export interface BlunderExplainParams {
   fen:         string;
   badMove:     string;
@@ -22,12 +33,6 @@ const SYSTEM_PROMPT =
   'Be direct, concise, and instructive.';
 
 export async function explainBlunder(params: BlunderExplainParams): Promise<string> {
-  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)?.trim();
-
-  if (!apiKey) {
-    return 'AI explanations are not configured. Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.';
-  }
-
   const { fen, badMove, bestMove, evalBefore, evalAfter, pvBest, pvBad, playerColor, moveNumber } = params;
   const swing = Math.abs(evalAfter - evalBefore);
 
@@ -50,10 +55,11 @@ Without any greeting or preamble, explain directly:
   };
 
   try {
-    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const { url, bodyOverride } = explainUrl(body);
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(bodyOverride ?? body),
     });
 
     if (res.status === 429) {
@@ -89,7 +95,8 @@ Without any greeting or preamble, explain directly:
     }
 
     return text.trim();
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('VITE_GEMINI_API_KEY')) return err.message;
     return 'Unable to generate explanation. Please try again.';
   }
 }
