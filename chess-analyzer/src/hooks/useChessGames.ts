@@ -89,6 +89,7 @@ export default function useChessGames(): UseChessGamesResult {
     setError(null);
     setUsername('');
     setSelectedGame(null);
+    cache.current.clear();
   }, []);
 
   return { games, loading, error, username, selectedGame, fetchGames, selectGame, clearGames };
