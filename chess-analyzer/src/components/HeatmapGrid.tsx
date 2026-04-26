@@ -1,39 +1,163 @@
+import { useState, useRef } from 'react';
 import type { HeatmapData, Square } from '../types/chess';
 
-interface HeatmapGridProps {
-  data?: Partial<HeatmapData>;
-}
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-const RANKS = [8, 7, 6, 5, 4, 3, 2, 1];
+const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
+const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
+const CELL = 56; // px
 
+// Light/dark square base colors (subtle warm chessboard, works on dark bg)
+const LIGHT_SQ = '#3a3120';
+const DARK_SQ  = '#1e1a10';
+
+// ── Color helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns an hsla colour on the blue → cyan → green → yellow → red spectrum.
+ * 0 count = transparent; max count = fully saturated red.
+ */
 function heatColor(value: number, max: number): string {
-  if (max === 0) return 'rgb(240,240,240)';
-  const intensity = Math.round((value / max) * 255);
-  return `rgb(${255 - intensity}, ${255 - intensity}, 255)`;
+  if (value === 0 || max === 0) return 'transparent';
+  const t = value / max;
+  const hue  = Math.round(240 * (1 - t));   // 240 (blue) → 0 (red)
+  const light = 42 + t * 13;                 // slightly brighter at peak
+  const alpha = 0.30 + t * 0.70;             // 30 % → 100 %
+  return `hsla(${hue}, 88%, ${light}%, ${alpha})`;
 }
 
-export default function HeatmapGrid({ data = {} }: HeatmapGridProps) {
+/** CSS gradient string for the legend bar. */
+const LEGEND_GRADIENT =
+  'linear-gradient(to right, hsla(240,88%,42%,1), hsla(180,88%,45%,1), hsla(120,88%,45%,1), hsla(60,88%,50%,1), hsla(0,88%,50%,1))';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TooltipState {
+  square: Square;
+  count: number;
+  x: number;
+  y: number;
+}
+
+interface HeatmapGridProps {
+  data: Partial<HeatmapData>;
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+
+function Legend({ max }: { max: number }) {
+  return (
+    <div className="flex flex-col gap-1" style={{ width: CELL * 8 + 20 }}>
+      <div
+        className="h-3 rounded"
+        style={{ background: LEGEND_GRADIENT, marginLeft: 20 }}
+      />
+      <div className="flex justify-between text-xs text-gray-500" style={{ marginLeft: 20 }}>
+        <span>0</span>
+        <span>{max > 0 ? Math.round(max / 2) : '—'}</span>
+        <span>{max > 0 ? max : '—'}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
+
+export default function HeatmapGrid({ data }: HeatmapGridProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
   const max = Math.max(0, ...Object.values(data));
 
+  function handleEnter(e: React.MouseEvent, square: Square, count: number) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const origin = containerRef.current?.getBoundingClientRect();
+    if (!origin) return;
+    setTooltip({
+      square,
+      count,
+      x: rect.left - origin.left + rect.width / 2,
+      y: rect.top - origin.top,
+    });
+  }
+
   return (
-    <div className="inline-grid gap-0.5" style={{ gridTemplateColumns: 'repeat(8, 2.5rem)' }}>
-      {RANKS.flatMap((rank) =>
-        FILES.map((file) => {
-          const square = `${file}${rank}` as Square;
-          const value = data[square] ?? 0;
-          return (
+    <div className="flex flex-col gap-3">
+      {/* Board */}
+      <div ref={containerRef} className="relative select-none">
+        {/* Rows */}
+        {RANKS.map((rank, rankIdx) => (
+          <div key={rank} className="flex">
+            {/* Rank label */}
             <div
-              key={square}
-              title={`${square}: ${value}`}
-              className="w-10 h-10 flex items-center justify-center text-xs font-mono"
-              style={{ backgroundColor: heatColor(value, max) }}
+              className="flex items-center justify-center text-xs text-gray-500 shrink-0"
+              style={{ width: 20, height: CELL }}
             >
-              {value > 0 ? value : ''}
+              {rank}
             </div>
-          );
-        })
-      )}
+
+            {/* Squares */}
+            {FILES.map((file, fileIdx) => {
+              const square = `${file}${rank}` as Square;
+              const count = data[square] ?? 0;
+              const isLight = (fileIdx + rankIdx) % 2 === 0;
+
+              return (
+                <div
+                  key={square}
+                  className="relative cursor-crosshair"
+                  style={{ width: CELL, height: CELL }}
+                  onMouseEnter={(e) => handleEnter(e, square, count)}
+                  onMouseLeave={() => setTooltip(null)}
+                >
+                  {/* Chessboard base */}
+                  <div
+                    className="absolute inset-0"
+                    style={{ backgroundColor: isLight ? LIGHT_SQ : DARK_SQ }}
+                  />
+                  {/* Heat overlay */}
+                  <div
+                    className="absolute inset-0 transition-colors duration-150"
+                    style={{ backgroundColor: heatColor(count, max) }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* File labels */}
+        <div className="flex" style={{ paddingLeft: 20 }}>
+          {FILES.map((file) => (
+            <div
+              key={file}
+              className="flex items-center justify-center text-xs text-gray-500"
+              style={{ width: CELL }}
+            >
+              {file}
+            </div>
+          ))}
+        </div>
+
+        {/* Tooltip */}
+        {tooltip && (
+          <div
+            className="absolute z-20 px-2 py-1 bg-gray-900 border border-gray-600 rounded text-xs text-white whitespace-nowrap pointer-events-none shadow-lg"
+            style={{
+              left: tooltip.x,
+              top: tooltip.y - 4,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            <span className="font-mono font-semibold">{tooltip.square}</span>
+            {' — '}
+            <span>{tooltip.count.toLocaleString()} move{tooltip.count !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Legend */}
+      <Legend max={max} />
     </div>
   );
 }
