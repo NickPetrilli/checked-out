@@ -26,9 +26,12 @@ type Classification = 'blunder' | 'mistake';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPTH            = 15;
+const DEPTH             = 15;
 const BLUNDER_THRESHOLD = 300;
 const MISTAKE_THRESHOLD = 100;
+const RIGHT_MIN_WIDTH   = 200;
+const RIGHT_MAX_WIDTH   = 560;
+const RIGHT_DEFAULT     = 300;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,8 +66,8 @@ function classifyPly(
 function parsePlies(pgn: string): { plies: Ply[]; fens: string[] } {
   const tmp = new Chess();
   tmp.loadPgn(pgn);
-  const history   = tmp.history({ verbose: true });
-  const setupFen  = tmp.header()['FEN'];
+  const history  = tmp.history({ verbose: true });
+  const setupFen = tmp.header()['FEN'];
 
   const chess = new Chess();
   if (setupFen) chess.load(setupFen);
@@ -110,14 +113,13 @@ function EvalBar({ score }: { score: number | undefined }) {
   );
 }
 
-/** Shows ?? for blunder, ? for mistake — colour + symbol + text label for non-colour accessibility. */
 function ClassBadge({ c }: { c?: Classification }) {
   if (!c) return null;
   return c === 'blunder' ? (
     <span
       aria-label="Blunder"
       title="Blunder (−3 pawns or more)"
-      className="inline-flex items-center gap-0.5 ml-0.5 shrink-0"
+      className="inline-flex items-center gap-0.5 shrink-0"
     >
       <span className="text-red-400 font-bold text-xs" aria-hidden="true">??</span>
       <span className="text-red-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Blunder</span>
@@ -126,7 +128,7 @@ function ClassBadge({ c }: { c?: Classification }) {
     <span
       aria-label="Mistake"
       title="Mistake (−1 to −3 pawns)"
-      className="inline-flex items-center gap-0.5 ml-0.5 shrink-0"
+      className="inline-flex items-center gap-0.5 shrink-0"
     >
       <span className="text-orange-400 font-bold text-xs" aria-hidden="true">?</span>
       <span className="text-orange-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Mistake</span>
@@ -162,51 +164,56 @@ function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
         const bClass  = black ? classifyPly(evals, bi, 'b') : undefined;
         const wActive = currentPly === wi + 1;
         const bActive = currentPly === bi + 1;
+        const wScore  = evals[wi + 1];
+        const bScore  = black ? evals[bi + 1] : null;
 
         return (
           <li key={wi} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800/50">
-            <span className="w-8 text-gray-500 text-xs shrink-0" aria-hidden="true">
+            {/* Move number */}
+            <span className="w-7 text-gray-500 text-xs shrink-0 tabular-nums" aria-hidden="true">
               {white.moveNumber}.
             </span>
 
-            <button
-              ref={wActive ? activeRef : undefined}
-              onClick={() => onJump(wi + 1)}
-              aria-label={`Move ${white.moveNumber} white: ${white.san}${wClass.classification ? `, ${wClass.classification}` : ''}`}
-              aria-current={wActive ? 'true' : undefined}
-              className={[
-                'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors min-w-0',
-                wActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
-              ].join(' ')}
-            >
-              <span className="font-medium truncate">{white.san}</span>
-              <ClassBadge c={wClass.classification} />
-              {evals[wi + 1] && (
-                <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
-                  {formatScore(evals[wi + 1]!.normalizedScore)}
-                </span>
-              )}
-            </button>
-
-            {black ? (
+            {/* White: button + score in separate column */}
+            <div className="flex items-center flex-1 min-w-0 gap-1">
               <button
-                ref={bActive ? activeRef : undefined}
-                onClick={() => onJump(bi + 1)}
-                aria-label={`Move ${black.moveNumber} black: ${black.san}${bClass?.classification ? `, ${bClass.classification}` : ''}`}
-                aria-current={bActive ? 'true' : undefined}
+                ref={wActive ? activeRef : undefined}
+                onClick={() => onJump(wi + 1)}
+                aria-label={`Move ${white.moveNumber} white: ${white.san}${wClass.classification ? `, ${wClass.classification}` : ''}`}
+                aria-current={wActive ? 'true' : undefined}
                 className={[
-                  'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors min-w-0',
-                  bActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
+                  'flex items-center gap-1 px-1.5 py-0.5 rounded text-left transition-colors flex-1 min-w-0',
+                  wActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
                 ].join(' ')}
               >
-                <span className="font-medium truncate">{black.san}</span>
-                <ClassBadge c={bClass?.classification} />
-                {evals[bi + 1] && (
-                  <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
-                    {formatScore(evals[bi + 1]!.normalizedScore)}
-                  </span>
-                )}
+                <span className="font-medium truncate">{white.san}</span>
+                <ClassBadge c={wClass.classification} />
               </button>
+              <span className="text-xs text-gray-500 tabular-nums w-14 text-right shrink-0">
+                {wScore ? formatScore(wScore.normalizedScore) : ''}
+              </span>
+            </div>
+
+            {/* Black: button + score in separate column */}
+            {black ? (
+              <div className="flex items-center flex-1 min-w-0 gap-1">
+                <button
+                  ref={bActive ? activeRef : undefined}
+                  onClick={() => onJump(bi + 1)}
+                  aria-label={`Move ${black.moveNumber} black: ${black.san}${bClass?.classification ? `, ${bClass.classification}` : ''}`}
+                  aria-current={bActive ? 'true' : undefined}
+                  className={[
+                    'flex items-center gap-1 px-1.5 py-0.5 rounded text-left transition-colors flex-1 min-w-0',
+                    bActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
+                  ].join(' ')}
+                >
+                  <span className="font-medium truncate">{black.san}</span>
+                  <ClassBadge c={bClass?.classification} />
+                </button>
+                <span className="text-xs text-gray-500 tabular-nums w-14 text-right shrink-0">
+                  {bScore ? formatScore(bScore.normalizedScore) : ''}
+                </span>
+              </div>
             ) : (
               <div className="flex-1" />
             )}
@@ -249,7 +256,7 @@ function SummaryPanel({ plies, evals, onJump }: SummaryPanelProps) {
   const worstPly = worstIdx >= 0 ? plies[worstIdx] : null;
 
   return (
-    <section aria-label="Analysis summary" className="border-t border-gray-700 pt-3 mt-2 text-xs text-gray-400 flex flex-col gap-2">
+    <section aria-label="Analysis summary" className="border-t border-gray-700 pt-3 mt-2 text-xs text-gray-400 flex flex-col gap-2 shrink-0">
       <p className="text-gray-300 font-semibold text-sm">Analysis Summary</p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
         <dt>White blunders ??</dt>
@@ -324,8 +331,13 @@ export default function Analyzer() {
   const [analysisDone,  setAnalysisDone]  = useState(0);
   const [analysisTotal, setAnalysisTotal] = useState(0);
   const [engineError,   setEngineError]   = useState<string | null>(null);
+  const [leftOpen,      setLeftOpen]      = useState(true);
+  const [rightWidth,    setRightWidth]    = useState(RIGHT_DEFAULT);
 
-  const cancelRef = useRef(0);
+  const cancelRef       = useRef(0);
+  const isDraggingRef   = useRef(false);
+  const dragStartXRef   = useRef(0);
+  const dragStartWRef   = useRef(0);
 
   // Pre-warm engine and surface any init errors
   useEffect(() => {
@@ -334,11 +346,43 @@ export default function Analyzer() {
     });
   }, []);
 
+  // ── Right-panel drag-to-resize ──────────────────────────────────────────────
+
+  function startDrag(e: React.MouseEvent) {
+    isDraggingRef.current  = true;
+    dragStartXRef.current  = e.clientX;
+    dragStartWRef.current  = rightWidth;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor     = 'ew-resize';
+    e.preventDefault();
+  }
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDraggingRef.current) return;
+      const delta   = dragStartXRef.current - e.clientX; // drag left = wider
+      const newWidth = Math.min(RIGHT_MAX_WIDTH, Math.max(RIGHT_MIN_WIDTH, dragStartWRef.current + delta));
+      setRightWidth(newWidth);
+    }
+    function onMouseUp() {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor     = '';
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
   // ── Game selection ──────────────────────────────────────────────────────────
 
   const handleSelectGame = useCallback(
     async (game: ParsedGame) => {
-      if (engineError) return; // engine failed — don't start analysis
+      if (engineError) return;
       selectGame(game);
 
       const token = ++cancelRef.current;
@@ -381,7 +425,6 @@ export default function Analyzer() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't steal keys from inputs
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
       if (e.key === 'ArrowLeft')  goTo(currentPly - 1);
       if (e.key === 'ArrowRight') goTo(currentPly + 1);
@@ -394,8 +437,8 @@ export default function Analyzer() {
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const currentFen = fens[currentPly] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  const currentEval = evals[currentPly];
+  const currentFen      = fens[currentPly] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const currentEval     = evals[currentPly];
   const analysisComplete = !isAnalyzing && plies.length > 0;
 
   if (games.length === 0) {
@@ -405,31 +448,54 @@ export default function Analyzer() {
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
 
-      {/* ── Left: game list ─────────────────────────────────────────────── */}
-      <aside
-        aria-label="Game list"
-        className="w-72 shrink-0 border-r border-gray-800 flex flex-col p-3 overflow-hidden"
-      >
-        <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Games</h2>
-        {engineError && (
-          <div role="alert" className="mb-2 text-xs text-red-400 bg-red-900/30 border border-red-800/50 rounded p-2">
-            Engine unavailable — analysis disabled.
+      {/* ── Left: game list (collapsible) ───────────────────────────────── */}
+      {leftOpen ? (
+        <aside
+          aria-label="Game list"
+          className="w-72 shrink-0 border-r border-gray-800 flex flex-col p-3 overflow-hidden"
+        >
+          <div className="flex items-center justify-between mb-2 shrink-0">
+            <h2 className="text-sm font-semibold text-gray-300">Games</h2>
+            <button
+              onClick={() => setLeftOpen(false)}
+              aria-label="Collapse game list"
+              title="Collapse game list"
+              className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700 transition-colors"
+            >
+              ◀
+            </button>
           </div>
-        )}
-        <GameList
-          games={games}
-          selectedGame={selectedGame}
-          onSelectGame={handleSelectGame}
-        />
-      </aside>
+          {engineError && (
+            <div role="alert" className="mb-2 text-xs text-red-400 bg-red-900/30 border border-red-800/50 rounded p-2">
+              Engine unavailable — analysis disabled.
+            </div>
+          )}
+          <GameList
+            games={games}
+            selectedGame={selectedGame}
+            onSelectGame={handleSelectGame}
+          />
+        </aside>
+      ) : (
+        <div className="shrink-0 border-r border-gray-800 flex flex-col items-center pt-2 bg-gray-900 w-8">
+          <button
+            onClick={() => setLeftOpen(true)}
+            aria-label="Expand game list"
+            title="Expand game list"
+            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700 transition-colors text-xs"
+          >
+            ▶
+          </button>
+        </div>
+      )}
 
       {/* ── Center: board ───────────────────────────────────────────────── */}
       <main
         aria-label="Chess board and controls"
         className="flex flex-col items-center justify-start gap-3 p-4 overflow-y-auto flex-1 min-w-0"
       >
-        {/* Eval bar */}
-        <div className="w-full max-w-sm">
+        {/* Eval bar + score — same width as board */}
+        <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
           <div className="flex justify-between text-xs text-gray-500 mb-1" aria-hidden="true">
             <span>Black</span>
             {currentEval && (
@@ -443,17 +509,17 @@ export default function Analyzer() {
         </div>
 
         {/* Board */}
-        <div className="w-full max-w-sm">
+        <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
           <ChessBoard fen={currentFen} />
         </div>
 
         {/* Navigation */}
         <div role="group" aria-label="Move navigation" className="flex items-center gap-2">
           {[
-            { label: '|◀', ariaLabel: 'Go to start',    key: 'start', action: () => goTo(0),             disabled: currentPly === 0 },
-            { label: '◀',  ariaLabel: 'Previous move',  key: 'prev',  action: () => goTo(currentPly - 1), disabled: currentPly === 0 },
-            { label: '▶',  ariaLabel: 'Next move',      key: 'next',  action: () => goTo(currentPly + 1), disabled: currentPly >= fens.length - 1 },
-            { label: '▶|', ariaLabel: 'Go to last move',key: 'end',   action: () => goTo(fens.length - 1),disabled: currentPly >= fens.length - 1 },
+            { label: '|◀', ariaLabel: 'Go to start',     key: 'start', action: () => goTo(0),              disabled: currentPly === 0 },
+            { label: '◀',  ariaLabel: 'Previous move',   key: 'prev',  action: () => goTo(currentPly - 1), disabled: currentPly === 0 },
+            { label: '▶',  ariaLabel: 'Next move',       key: 'next',  action: () => goTo(currentPly + 1), disabled: currentPly >= fens.length - 1 },
+            { label: '▶|', ariaLabel: 'Go to last move', key: 'end',   action: () => goTo(fens.length - 1), disabled: currentPly >= fens.length - 1 },
           ].map(({ label, ariaLabel, key, action, disabled }) => (
             <button
               key={key}
@@ -474,7 +540,7 @@ export default function Analyzer() {
 
         {/* Analysis progress */}
         {isAnalyzing && (
-          <div role="status" aria-live="polite" className="w-full max-w-sm">
+          <div role="status" aria-live="polite" style={{ width: 'min(100%, calc(100vh - 240px))' }}>
             <div className="flex justify-between text-xs text-gray-400 mb-1">
               <span>Analyzing move {analysisDone}/{analysisTotal}…</span>
             </div>
@@ -492,18 +558,29 @@ export default function Analyzer() {
         )}
       </main>
 
-      {/* ── Right: move list + summary ──────────────────────────────────── */}
+      {/* ── Right: move list + summary (resizable) ──────────────────────── */}
       {plies.length > 0 && (
-        <aside
-          aria-label="Move analysis panel"
-          className="w-64 shrink-0 border-l border-gray-800 flex flex-col p-3 overflow-hidden"
-        >
-          <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Moves</h2>
-          <MoveTable plies={plies} evals={evals} currentPly={currentPly} onJump={goTo} />
-          {analysisComplete && (
-            <SummaryPanel plies={plies} evals={evals} onJump={goTo} />
-          )}
-        </aside>
+        <>
+          {/* Drag handle */}
+          <div
+            onMouseDown={startDrag}
+            aria-hidden="true"
+            className="w-1.5 shrink-0 cursor-ew-resize bg-gray-800 hover:bg-blue-600 transition-colors"
+            title="Drag to resize"
+          />
+
+          <aside
+            aria-label="Move analysis panel"
+            style={{ width: rightWidth }}
+            className="shrink-0 flex flex-col p-3 overflow-hidden border-l border-gray-800"
+          >
+            <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Moves</h2>
+            <MoveTable plies={plies} evals={evals} currentPly={currentPly} onJump={goTo} />
+            {analysisComplete && (
+              <SummaryPanel plies={plies} evals={evals} onJump={goTo} />
+            )}
+          </aside>
+        </>
       )}
     </div>
   );

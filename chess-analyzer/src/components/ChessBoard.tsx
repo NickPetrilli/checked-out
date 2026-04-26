@@ -13,7 +13,7 @@ export default function ChessBoard({ fen, onMove }: ChessBoardProps) {
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto">
+    <div className="w-full">
       <Chessboard
         options={{
           position: fen ?? 'start',
