@@ -1,8 +1,8 @@
-import type { ChessComGame } from '../types/chess';
+import type { ParsedGame } from '../types/chess';
 
 interface GameListProps {
-  games: ChessComGame[];
-  onSelect?: (game: ChessComGame) => void;
+  games: ParsedGame[];
+  onSelect?: (game: ParsedGame) => void;
 }
 
 export default function GameList({ games, onSelect }: GameListProps) {
@@ -14,14 +14,14 @@ export default function GameList({ games, onSelect }: GameListProps) {
     <ul className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
       {games.map((game) => (
         <li
-          key={game.url}
+          key={game.id}
           className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer"
           onClick={() => onSelect?.(game)}
         >
           <span className="font-medium text-sm">
-            {game.white.username} vs {game.black.username}
+            {game.white} vs {game.black}
           </span>
-          <span className="text-xs text-gray-500">{game.time_control}</span>
+          <span className="text-xs text-gray-500">{game.timeControl}</span>
         </li>
       ))}
     </ul>
