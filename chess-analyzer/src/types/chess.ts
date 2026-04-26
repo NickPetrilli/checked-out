@@ -1,23 +1,51 @@
-export interface ChessGame {
+export interface ChessComPlayer {
+  username: string;
+  rating: number;
+  result: string;
+}
+
+export interface ChessComGame {
   url: string;
   pgn: string;
   time_control: string;
   end_time: number;
   rated: boolean;
-  white: {
-    username: string;
-    rating: number;
-    result: string;
-  };
-  black: {
-    username: string;
-    rating: number;
-    result: string;
-  };
+  white: ChessComPlayer;
+  black: ChessComPlayer;
 }
 
-export interface GamesArchive {
-  games: ChessGame[];
+export interface ChessComProfile {
+  avatar?: string;
+  username: string;
+  country: string;
+  last_online: number;
+}
+
+export interface ParsedGame {
+  id: string;
+  white: string;
+  black: string;
+  whiteRating: number;
+  blackRating: number;
+  date: string;
+  pgn: string;
+  timeControl: string;
+  result: 'white' | 'black' | 'draw';
+}
+
+export interface GameMove {
+  moveNumber: number;
+  san: string;
+  from: string;
+  to: string;
+  piece: string;
+  color: 'w' | 'b';
+  fenBefore: string;
+  fenAfter: string;
+  evaluation?: number;
+  bestMove?: string;
+  isMistake?: boolean;
+  isBlunder?: boolean;
 }
 
 export type Square =
