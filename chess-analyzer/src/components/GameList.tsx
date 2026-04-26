@@ -1,8 +1,8 @@
-import type { ChessGame } from '../types/chess';
+import type { ChessComGame } from '../types/chess';
 
 interface GameListProps {
-  games: ChessGame[];
-  onSelect?: (game: ChessGame) => void;
+  games: ChessComGame[];
+  onSelect?: (game: ChessComGame) => void;
 }
 
 export default function GameList({ games, onSelect }: GameListProps) {

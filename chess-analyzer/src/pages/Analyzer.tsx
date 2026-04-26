@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import GameList from '../components/GameList';
-import { useChessGames } from '../hooks/useChessGames';
-import type { ChessGame } from '../types/chess';
+import { useChessComGames } from '../hooks/useChessComGames';
+import type { ChessComGame } from '../types/chess';
 
 export default function Analyzer() {
-  const { games, loading, error, fetchGames } = useChessGames();
+  const { games, loading, error, fetchGames } = useChessComGames();
   const [username, setUsername] = useState('');
   const [chess] = useState(new Chess());
   const [fen, setFen] = useState(chess.fen());
@@ -21,7 +21,7 @@ export default function Analyzer() {
     }
   }
 
-  function handleSelectGame(game: ChessGame) {
+  function handleSelectGame(game: ChessComGame) {
     chess.loadPgn(game.pgn);
     setFen(chess.fen());
   }

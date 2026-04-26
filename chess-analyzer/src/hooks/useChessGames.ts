@@ -1,16 +1,16 @@
 import { useState, useCallback } from 'react';
-import type { ChessGame } from '../types/chess';
+import type { ChessComGame } from '../types/chess';
 import { getRecentGames } from '../services/chesscom';
 
 interface UseChessGamesResult {
-  games: ChessGame[];
+  games: ChessComGame[];
   loading: boolean;
   error: string | null;
   fetchGames: (username: string, months?: number) => Promise<void>;
 }
 
 export function useChessGames(): UseChessGamesResult {
-  const [games, setGames] = useState<ChessGame[]>([]);
+  const [games, setGames] = useState<ChessComGame[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
