@@ -136,16 +136,51 @@ function ClassBadge({ c }: { c?: Classification }) {
   );
 }
 
+// ── Player nameplate ─────────────────────────────────────────────────────────
+
+interface NameplateProps {
+  name:    string;
+  rating:  number;
+  color:   'white' | 'black';
+  isUser:  boolean;
+}
+
+function PlayerNameplate({ name, rating, color, isUser }: NameplateProps) {
+  return (
+    <div className="flex items-center gap-2 w-full">
+      <span
+        aria-hidden="true"
+        className={[
+          'w-4 h-4 rounded-sm shrink-0 border',
+          color === 'white' ? 'bg-gray-100 border-gray-400' : 'bg-gray-800 border-gray-600',
+        ].join(' ')}
+      />
+      <span className={['font-semibold text-sm truncate', isUser ? 'text-white' : 'text-gray-300'].join(' ')}>
+        {name}
+      </span>
+      <span className="text-gray-500 text-xs tabular-nums shrink-0">({rating})</span>
+      {isUser && (
+        <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-600 text-white shrink-0">
+          You
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Move table ────────────────────────────────────────────────────────────────
 
 interface MoveTableProps {
-  plies:      Ply[];
-  evals:      (PlyEval | null)[];
-  currentPly: number;
-  onJump:     (idx: number) => void;
+  plies:        Ply[];
+  evals:        (PlyEval | null)[];
+  currentPly:   number;
+  onJump:       (idx: number) => void;
+  whiteName?:   string;
+  blackName?:   string;
+  username?:    string;
 }
 
-function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
+function MoveTable({ plies, evals, currentPly, onJump, whiteName, blackName, username }: MoveTableProps) {
   const activeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -157,8 +192,37 @@ function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
     pairs.push([plies[i], i, plies[i + 1], i + 1]);
   }
 
+  const userIsWhite = username && whiteName && username.toLowerCase() === whiteName.toLowerCase();
+  const userIsBlack = username && blackName && username.toLowerCase() === blackName.toLowerCase();
+
   return (
-    <ol aria-label="Move list" className="overflow-y-auto flex-1 min-h-0 text-sm list-none m-0 p-0">
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Column headers */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-700 shrink-0 bg-gray-900">
+        <span className="w-7 shrink-0" aria-hidden="true" />
+        {/* White column header */}
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full bg-gray-100 border border-gray-500 shrink-0" aria-hidden="true" />
+          <span className="text-xs font-semibold text-gray-300 truncate">
+            {whiteName ?? 'White'}
+          </span>
+          {userIsWhite && (
+            <span className="text-xs font-bold text-blue-400 shrink-0">You</span>
+          )}
+        </div>
+        {/* Black column header */}
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full bg-gray-800 border border-gray-500 shrink-0" aria-hidden="true" />
+          <span className="text-xs font-semibold text-gray-300 truncate">
+            {blackName ?? 'Black'}
+          </span>
+          {userIsBlack && (
+            <span className="text-xs font-bold text-blue-400 shrink-0">You</span>
+          )}
+        </div>
+      </div>
+
+      <ol aria-label="Move list" className="overflow-y-auto flex-1 min-h-0 text-sm list-none m-0 p-0">
       {pairs.map(([white, wi, black, bi]) => {
         const wClass  = classifyPly(evals, wi, 'w');
         const bClass  = black ? classifyPly(evals, bi, 'b') : undefined;
@@ -220,7 +284,8 @@ function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
           </li>
         );
       })}
-    </ol>
+      </ol>
+    </div>
   );
 }
 
@@ -321,7 +386,7 @@ function EmptyState({ engineError }: { engineError: string | null }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Analyzer() {
-  const { games, selectedGame, selectGame } = useChessGamesContext();
+  const { games, selectedGame, selectGame, username } = useChessGamesContext();
 
   const [plies,         setPlies]         = useState<Ply[]>([]);
   const [fens,          setFens]          = useState<string[]>([]);
@@ -508,10 +573,34 @@ export default function Analyzer() {
           <EvalBar score={currentEval?.normalizedScore} />
         </div>
 
+        {/* Black nameplate (top of board) */}
+        {selectedGame && (
+          <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
+            <PlayerNameplate
+              name={selectedGame.black}
+              rating={selectedGame.blackRating}
+              color="black"
+              isUser={username.toLowerCase() === selectedGame.black.toLowerCase()}
+            />
+          </div>
+        )}
+
         {/* Board */}
         <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
           <ChessBoard fen={currentFen} />
         </div>
+
+        {/* White nameplate (bottom of board) */}
+        {selectedGame && (
+          <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
+            <PlayerNameplate
+              name={selectedGame.white}
+              rating={selectedGame.whiteRating}
+              color="white"
+              isUser={username.toLowerCase() === selectedGame.white.toLowerCase()}
+            />
+          </div>
+        )}
 
         {/* Navigation */}
         <div role="group" aria-label="Move navigation" className="flex items-center gap-2">
@@ -575,7 +664,15 @@ export default function Analyzer() {
             className="shrink-0 flex flex-col p-3 overflow-hidden border-l border-gray-800"
           >
             <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Moves</h2>
-            <MoveTable plies={plies} evals={evals} currentPly={currentPly} onJump={goTo} />
+            <MoveTable
+              plies={plies}
+              evals={evals}
+              currentPly={currentPly}
+              onJump={goTo}
+              whiteName={selectedGame?.white}
+              blackName={selectedGame?.black}
+              username={username}
+            />
             {analysisComplete && (
               <SummaryPanel plies={plies} evals={evals} onJump={goTo} />
             )}
