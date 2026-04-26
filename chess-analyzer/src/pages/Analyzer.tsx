@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Chess } from 'chess.js';
+import { Link } from 'react-router-dom';
 import ChessBoard from '../components/ChessBoard';
 import GameList from '../components/GameList';
 import { useChessGamesContext } from '../context/ChessGamesContext';
-import { evaluatePosition } from '../services/stockfish';
+import { evaluatePosition, ensureEngineReady } from '../services/stockfish';
 import type { ParsedGame } from '../types/chess';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -11,28 +12,28 @@ import type { ParsedGame } from '../types/chess';
 interface Ply {
   san: string;
   color: 'w' | 'b';
-  moveNumber: number; // chess full-move number (1-based)
+  moveNumber: number;
   fenBefore: string;
   fenAfter: string;
 }
 
 interface PlyEval {
-  normalizedScore: number; // centipawns, white's perspective
+  normalizedScore: number;
   bestMove: string;
 }
 
 type Classification = 'blunder' | 'mistake';
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPTH = 15;
+const DEPTH            = 15;
 const BLUNDER_THRESHOLD = 300;
 const MISTAKE_THRESHOLD = 100;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatScore(score: number): string {
-  if (score >= 9_900) return `M${10_000 - score}`;
+  if (score >= 9_900)  return `M${10_000 - score}`;
   if (score <= -9_900) return `-M${10_000 + score}`;
   const s = (score / 100).toFixed(2);
   return score > 0 ? `+${s}` : s;
@@ -48,86 +49,98 @@ function classifyPly(
   color: 'w' | 'b',
 ): { classification?: Classification; scoreDrop: number } {
   const before = evals[plyIdx];
-  const after = evals[plyIdx + 1];
+  const after  = evals[plyIdx + 1];
   if (!before || !after) return { scoreDrop: 0 };
-
   const drop =
     color === 'w'
       ? before.normalizedScore - after.normalizedScore
       : after.normalizedScore - before.normalizedScore;
-
   if (drop >= BLUNDER_THRESHOLD) return { classification: 'blunder', scoreDrop: drop };
   if (drop >= MISTAKE_THRESHOLD) return { classification: 'mistake', scoreDrop: drop };
   return { scoreDrop: Math.max(0, drop) };
 }
 
 function parsePlies(pgn: string): { plies: Ply[]; fens: string[] } {
-  const chess = new Chess();
-  chess.loadPgn(pgn);
-  const history = chess.history({ verbose: true });
+  const tmp = new Chess();
+  tmp.loadPgn(pgn);
+  const history   = tmp.history({ verbose: true });
+  const setupFen  = tmp.header()['FEN'];
 
-  chess.reset();
-  // reset to the starting FEN from the PGN (may differ from default if SetUp/FEN headers present)
-  try { chess.loadPgn(pgn); } catch { /* noop */ }
-  chess.reset();
-  try {
-    const tmp = new Chess();
-    tmp.loadPgn(pgn);
-    const setupFen = tmp.header()['FEN'];
-    if (setupFen) chess.load(setupFen);
-  } catch { /* noop */ }
+  const chess = new Chess();
+  if (setupFen) chess.load(setupFen);
 
   const fens: string[] = [chess.fen()];
-  const plies: Ply[] = [];
+  const plies: Ply[]   = [];
 
   for (const move of history) {
     const fenBefore = chess.fen();
     chess.move(move);
-    const fenAfter = chess.fen();
     plies.push({
       san: move.san,
       color: move.color,
-      moveNumber: move.color === 'w'
-        ? Math.ceil(plies.length / 2) + 1
-        : Math.ceil((plies.length + 1) / 2),
+      moveNumber:
+        move.color === 'w'
+          ? Math.ceil(plies.length / 2) + 1
+          : Math.ceil((plies.length + 1) / 2),
       fenBefore,
-      fenAfter,
+      fenAfter: chess.fen(),
     });
-    fens.push(fenAfter);
+    fens.push(chess.fen());
   }
-
   return { plies, fens };
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function EvalBar({ score }: { score: number | undefined }) {
-  const pct = evalBarWhitePct(score ?? 0);
+  const pct   = evalBarWhitePct(score ?? 0);
+  const label = score !== undefined ? formatScore(score) : '—';
   return (
-    <div className="w-full h-3 rounded-full overflow-hidden bg-gray-700 flex">
-      <div
-        className="h-full bg-gray-100 transition-all duration-300"
-        style={{ width: `${pct}%` }}
-      />
+    <div
+      role="meter"
+      aria-label={`Position evaluation: ${label}`}
+      aria-valuenow={score ?? 0}
+      aria-valuemin={-1000}
+      aria-valuemax={1000}
+      className="w-full h-3 rounded-full overflow-hidden bg-gray-700 flex"
+    >
+      <div className="h-full bg-gray-100 transition-all duration-300" style={{ width: `${pct}%` }} />
       <div className="h-full flex-1 bg-gray-800" />
     </div>
   );
 }
 
+/** Shows ?? for blunder, ? for mistake — colour + symbol + text label for non-colour accessibility. */
 function ClassBadge({ c }: { c?: Classification }) {
   if (!c) return null;
   return c === 'blunder' ? (
-    <span className="text-red-400 font-bold ml-0.5" title="Blunder">??</span>
+    <span
+      aria-label="Blunder"
+      title="Blunder (−3 pawns or more)"
+      className="inline-flex items-center gap-0.5 ml-0.5 shrink-0"
+    >
+      <span className="text-red-400 font-bold text-xs" aria-hidden="true">??</span>
+      <span className="text-red-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Blunder</span>
+    </span>
   ) : (
-    <span className="text-orange-400 font-bold ml-0.5" title="Mistake">?</span>
+    <span
+      aria-label="Mistake"
+      title="Mistake (−1 to −3 pawns)"
+      className="inline-flex items-center gap-0.5 ml-0.5 shrink-0"
+    >
+      <span className="text-orange-400 font-bold text-xs" aria-hidden="true">?</span>
+      <span className="text-orange-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Mistake</span>
+    </span>
   );
 }
 
+// ── Move table ────────────────────────────────────────────────────────────────
+
 interface MoveTableProps {
-  plies: Ply[];
-  evals: (PlyEval | null)[];
-  currentPly: number; // 0 = start position
-  onJump: (plyIndex: number) => void;
+  plies:      Ply[];
+  evals:      (PlyEval | null)[];
+  currentPly: number;
+  onJump:     (idx: number) => void;
 }
 
 function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
@@ -143,49 +156,53 @@ function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
   }
 
   return (
-    <div className="overflow-y-auto flex-1 min-h-0 text-sm">
+    <ol aria-label="Move list" className="overflow-y-auto flex-1 min-h-0 text-sm list-none m-0 p-0">
       {pairs.map(([white, wi, black, bi]) => {
-        const wClass = classifyPly(evals, wi, 'w');
-        const bClass = black ? classifyPly(evals, bi, 'b') : undefined;
+        const wClass  = classifyPly(evals, wi, 'w');
+        const bClass  = black ? classifyPly(evals, bi, 'b') : undefined;
         const wActive = currentPly === wi + 1;
         const bActive = currentPly === bi + 1;
 
         return (
-          <div key={wi} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800/50">
-            <span className="w-8 text-gray-500 text-xs shrink-0">{white.moveNumber}.</span>
+          <li key={wi} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800/50">
+            <span className="w-8 text-gray-500 text-xs shrink-0" aria-hidden="true">
+              {white.moveNumber}.
+            </span>
 
-            {/* White ply */}
             <button
               ref={wActive ? activeRef : undefined}
               onClick={() => onJump(wi + 1)}
+              aria-label={`Move ${white.moveNumber} white: ${white.san}${wClass.classification ? `, ${wClass.classification}` : ''}`}
+              aria-current={wActive ? 'true' : undefined}
               className={[
-                'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors',
+                'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors min-w-0',
                 wActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
               ].join(' ')}
             >
-              <span className="font-medium">{white.san}</span>
+              <span className="font-medium truncate">{white.san}</span>
               <ClassBadge c={wClass.classification} />
               {evals[wi + 1] && (
-                <span className="ml-auto text-xs text-gray-400 tabular-nums">
+                <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
                   {formatScore(evals[wi + 1]!.normalizedScore)}
                 </span>
               )}
             </button>
 
-            {/* Black ply */}
             {black ? (
               <button
                 ref={bActive ? activeRef : undefined}
                 onClick={() => onJump(bi + 1)}
+                aria-label={`Move ${black.moveNumber} black: ${black.san}${bClass?.classification ? `, ${bClass.classification}` : ''}`}
+                aria-current={bActive ? 'true' : undefined}
                 className={[
-                  'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors',
+                  'flex items-center gap-1 px-2 py-0.5 rounded flex-1 text-left transition-colors min-w-0',
                   bActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
                 ].join(' ')}
               >
-                <span className="font-medium">{black.san}</span>
+                <span className="font-medium truncate">{black.san}</span>
                 <ClassBadge c={bClass?.classification} />
                 {evals[bi + 1] && (
-                  <span className="ml-auto text-xs text-gray-400 tabular-nums">
+                  <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
                     {formatScore(evals[bi + 1]!.normalizedScore)}
                   </span>
                 )}
@@ -193,93 +210,135 @@ function MoveTable({ plies, evals, currentPly, onJump }: MoveTableProps) {
             ) : (
               <div className="flex-1" />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
+// ── Summary panel ─────────────────────────────────────────────────────────────
+
 interface SummaryPanelProps {
-  plies: Ply[];
-  evals: (PlyEval | null)[];
-  onJump: (plyIndex: number) => void;
+  plies:  Ply[];
+  evals:  (PlyEval | null)[];
+  onJump: (idx: number) => void;
 }
 
 function SummaryPanel({ plies, evals, onJump }: SummaryPanelProps) {
-  let wBlunders = 0, wMistakes = 0, bBlunders = 0, bMistakes = 0;
-  let worstIdx = -1, worstDrop = 0;
+  const summary = useMemo(() => {
+    let wBlunders = 0, wMistakes = 0, bBlunders = 0, bMistakes = 0;
+    let worstIdx  = -1, worstDrop = 0;
 
-  for (let i = 0; i < plies.length; i++) {
-    const { classification, scoreDrop } = classifyPly(evals, i, plies[i].color);
-    if (!classification) continue;
-    if (plies[i].color === 'w') {
-      if (classification === 'blunder') wBlunders++;
-      else wMistakes++;
-    } else {
-      if (classification === 'blunder') bBlunders++;
-      else bMistakes++;
+    for (let i = 0; i < plies.length; i++) {
+      const { classification, scoreDrop } = classifyPly(evals, i, plies[i].color);
+      if (!classification) continue;
+      if (plies[i].color === 'w') {
+        if (classification === 'blunder') wBlunders++;
+        else wMistakes++;
+      } else {
+        if (classification === 'blunder') bBlunders++;
+        else bMistakes++;
+      }
+      if (scoreDrop > worstDrop) { worstDrop = scoreDrop; worstIdx = i; }
     }
-    if (scoreDrop > worstDrop) { worstDrop = scoreDrop; worstIdx = i; }
-  }
+    return { wBlunders, wMistakes, bBlunders, bMistakes, worstIdx, worstDrop };
+  }, [plies, evals]);
 
+  const { wBlunders, wMistakes, bBlunders, bMistakes, worstIdx, worstDrop } = summary;
   const worstPly = worstIdx >= 0 ? plies[worstIdx] : null;
 
   return (
-    <div className="border-t border-gray-700 pt-3 mt-2 text-xs text-gray-400 flex flex-col gap-2">
+    <section aria-label="Analysis summary" className="border-t border-gray-700 pt-3 mt-2 text-xs text-gray-400 flex flex-col gap-2">
       <p className="text-gray-300 font-semibold text-sm">Analysis Summary</p>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-        <span className="text-gray-400">White blunders</span>
-        <span className="text-red-400 font-bold">{wBlunders}</span>
-        <span className="text-gray-400">White mistakes</span>
-        <span className="text-orange-400 font-bold">{wMistakes}</span>
-        <span className="text-gray-400">Black blunders</span>
-        <span className="text-red-400 font-bold">{bBlunders}</span>
-        <span className="text-gray-400">Black mistakes</span>
-        <span className="text-orange-400 font-bold">{bMistakes}</span>
-      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+        <dt>White blunders ??</dt>
+        <dd className="text-red-400 font-bold">{wBlunders}</dd>
+        <dt>White mistakes ?</dt>
+        <dd className="text-orange-400 font-bold">{wMistakes}</dd>
+        <dt>Black blunders ??</dt>
+        <dd className="text-red-400 font-bold">{bBlunders}</dd>
+        <dt>Black mistakes ?</dt>
+        <dd className="text-orange-400 font-bold">{bMistakes}</dd>
+      </dl>
       {worstPly && (
         <div className="bg-red-900/30 border border-red-800/50 rounded p-2 flex items-center justify-between gap-2">
           <div>
-            <p className="text-red-300 font-semibold">Worst blunder</p>
+            <p className="text-red-300 font-semibold">Worst blunder ??</p>
             <p className="text-gray-400">
               Move {worstPly.moveNumber}{worstPly.color === 'b' ? '…' : '.'}{' '}
               <span className="text-white font-mono">{worstPly.san}</span>
-              {' '}<span className="text-red-400">??</span>
               {' '}(−{(worstDrop / 100).toFixed(2)})
             </p>
           </div>
           <button
             onClick={() => onJump(worstIdx + 1)}
+            aria-label={`Jump to worst blunder: move ${worstPly.moveNumber} ${worstPly.san}`}
             className="px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-xs whitespace-nowrap transition-colors"
           >
             Jump
           </button>
         </div>
       )}
+    </section>
+  );
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+
+function EmptyState({ engineError }: { engineError: string | null }) {
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center">
+      <p className="text-4xl" aria-hidden="true">♟</p>
+      <p className="text-gray-300 font-semibold text-lg">No games loaded</p>
+      <p className="text-gray-500 text-sm max-w-xs">
+        Fetch your Chess.com games on the Home page first, then come back here to analyse them.
+      </p>
+      <Link
+        to="/"
+        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+      >
+        Go to Home
+      </Link>
+      {engineError && (
+        <div role="alert" className="mt-2 w-full max-w-sm bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
+          <p className="font-semibold mb-1">Chess engine failed to load</p>
+          <p>{engineError}</p>
+          <p className="mt-1 text-red-400/70 text-xs">Analysis will be unavailable. Try refreshing the page.</p>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function Analyzer() {
   const { games, selectedGame, selectGame } = useChessGamesContext();
 
-  const [plies, setPlies] = useState<Ply[]>([]);
-  const [fens, setFens] = useState<string[]>([]);
-  const [evals, setEvals] = useState<(PlyEval | null)[]>([]);
-  const [currentPly, setCurrentPly] = useState(0);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisDone, setAnalysisDone] = useState(0);
+  const [plies,         setPlies]         = useState<Ply[]>([]);
+  const [fens,          setFens]          = useState<string[]>([]);
+  const [evals,         setEvals]         = useState<(PlyEval | null)[]>([]);
+  const [currentPly,    setCurrentPly]    = useState(0);
+  const [isAnalyzing,   setIsAnalyzing]   = useState(false);
+  const [analysisDone,  setAnalysisDone]  = useState(0);
   const [analysisTotal, setAnalysisTotal] = useState(0);
+  const [engineError,   setEngineError]   = useState<string | null>(null);
 
   const cancelRef = useRef(0);
+
+  // Pre-warm engine and surface any init errors
+  useEffect(() => {
+    ensureEngineReady().catch((err: unknown) => {
+      setEngineError(err instanceof Error ? err.message : 'Failed to load chess engine.');
+    });
+  }, []);
 
   // ── Game selection ──────────────────────────────────────────────────────────
 
   const handleSelectGame = useCallback(
     async (game: ParsedGame) => {
+      if (engineError) return; // engine failed — don't start analysis
       selectGame(game);
 
       const token = ++cancelRef.current;
@@ -293,16 +352,15 @@ export default function Analyzer() {
       setAnalysisDone(0);
       setAnalysisTotal(newFens.length);
 
-      const evalsAcc: (PlyEval | null)[] = new Array(newFens.length).fill(null);
+      const acc: (PlyEval | null)[] = new Array(newFens.length).fill(null);
 
       for (let i = 0; i < newFens.length; i++) {
         if (cancelRef.current !== token) return;
-
         try {
           const result = await evaluatePosition(newFens[i], DEPTH);
           if (cancelRef.current !== token) return;
-          evalsAcc[i] = { normalizedScore: result.score, bestMove: result.bestMove };
-          setEvals([...evalsAcc]);
+          acc[i] = { normalizedScore: result.score, bestMove: result.bestMove };
+          setEvals([...acc]);
           setAnalysisDone(i + 1);
         } catch (err) {
           console.error(`Eval failed at position ${i}:`, err);
@@ -311,10 +369,10 @@ export default function Analyzer() {
 
       if (cancelRef.current === token) setIsAnalyzing(false);
     },
-    [selectGame],
+    [selectGame, engineError],
   );
 
-  // ── Navigation ──────────────────────────────────────────────────────────────
+  // ── Keyboard navigation ─────────────────────────────────────────────────────
 
   const goTo = useCallback(
     (idx: number) => setCurrentPly(Math.max(0, Math.min(idx, fens.length - 1))),
@@ -323,26 +381,40 @@ export default function Analyzer() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') goTo(currentPly - 1);
+      // Don't steal keys from inputs
+      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+      if (e.key === 'ArrowLeft')  goTo(currentPly - 1);
       if (e.key === 'ArrowRight') goTo(currentPly + 1);
+      if (e.key === 'Home')       goTo(0);
+      if (e.key === 'End')        goTo(fens.length - 1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [currentPly, goTo]);
+  }, [currentPly, goTo, fens.length]);
 
-  // ── Board ────────────────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────────
 
   const currentFen = fens[currentPly] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   const currentEval = evals[currentPly];
   const analysisComplete = !isAnalyzing && plies.length > 0;
 
+  if (games.length === 0) {
+    return <EmptyState engineError={engineError} />;
+  }
+
   return (
-    <div className="flex h-[calc(100vh-57px)] overflow-hidden">
-      {/* ── Left: game list ───────────────────────────────────────────────── */}
-      <aside className="w-72 shrink-0 border-r border-gray-800 flex flex-col p-3 overflow-hidden">
+    <div className="flex h-[calc(100vh-52px)] overflow-hidden">
+
+      {/* ── Left: game list ─────────────────────────────────────────────── */}
+      <aside
+        aria-label="Game list"
+        className="w-72 shrink-0 border-r border-gray-800 flex flex-col p-3 overflow-hidden"
+      >
         <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Games</h2>
-        {games.length === 0 && (
-          <p className="text-gray-500 text-xs">Fetch games on the Home page first.</p>
+        {engineError && (
+          <div role="alert" className="mb-2 text-xs text-red-400 bg-red-900/30 border border-red-800/50 rounded p-2">
+            Engine unavailable — analysis disabled.
+          </div>
         )}
         <GameList
           games={games}
@@ -351,11 +423,14 @@ export default function Analyzer() {
         />
       </aside>
 
-      {/* ── Center: board + controls ──────────────────────────────────────── */}
-      <main className="flex flex-col items-center justify-start gap-3 p-4 overflow-y-auto flex-1 min-w-0">
+      {/* ── Center: board ───────────────────────────────────────────────── */}
+      <main
+        aria-label="Chess board and controls"
+        className="flex flex-col items-center justify-start gap-3 p-4 overflow-y-auto flex-1 min-w-0"
+      >
         {/* Eval bar */}
         <div className="w-full max-w-sm">
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <div className="flex justify-between text-xs text-gray-500 mb-1" aria-hidden="true">
             <span>Black</span>
             {currentEval && (
               <span className={currentEval.normalizedScore >= 0 ? 'text-white' : 'text-gray-300'}>
@@ -373,36 +448,35 @@ export default function Analyzer() {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center gap-2">
+        <div role="group" aria-label="Move navigation" className="flex items-center gap-2">
           {[
-            { label: '|◀', title: 'Start', action: () => goTo(0) },
-            { label: '◀', title: 'Previous (←)', action: () => goTo(currentPly - 1) },
-            { label: '▶', title: 'Next (→)', action: () => goTo(currentPly + 1) },
-            { label: '▶|', title: 'End', action: () => goTo(fens.length - 1) },
-          ].map(({ label, title, action }) => (
+            { label: '|◀', ariaLabel: 'Go to start',    key: 'start', action: () => goTo(0),             disabled: currentPly === 0 },
+            { label: '◀',  ariaLabel: 'Previous move',  key: 'prev',  action: () => goTo(currentPly - 1), disabled: currentPly === 0 },
+            { label: '▶',  ariaLabel: 'Next move',      key: 'next',  action: () => goTo(currentPly + 1), disabled: currentPly >= fens.length - 1 },
+            { label: '▶|', ariaLabel: 'Go to last move',key: 'end',   action: () => goTo(fens.length - 1),disabled: currentPly >= fens.length - 1 },
+          ].map(({ label, ariaLabel, key, action, disabled }) => (
             <button
-              key={label}
+              key={key}
               onClick={action}
-              title={title}
-              disabled={plies.length === 0}
-              className="w-9 h-9 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-gray-300 transition-colors text-sm font-mono"
+              aria-label={ariaLabel}
+              disabled={plies.length === 0 || disabled}
+              className="w-9 h-9 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-gray-300 transition-colors text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {label}
+              <span aria-hidden="true">{label}</span>
             </button>
           ))}
           {plies.length > 0 && (
-            <span className="text-xs text-gray-500 ml-1">
+            <span className="text-xs text-gray-500 ml-1" aria-live="polite">
               {currentPly}/{plies.length}
             </span>
           )}
         </div>
 
-        {/* Progress bar */}
+        {/* Analysis progress */}
         {isAnalyzing && (
-          <div className="w-full max-w-sm">
+          <div role="status" aria-live="polite" className="w-full max-w-sm">
             <div className="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Analyzing…</span>
-              <span>{analysisDone}/{analysisTotal}</span>
+              <span>Analyzing move {analysisDone}/{analysisTotal}…</span>
             </div>
             <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
               <div
@@ -414,20 +488,18 @@ export default function Analyzer() {
         )}
 
         {!selectedGame && (
-          <p className="text-gray-600 text-sm mt-4">Select a game from the list to begin.</p>
+          <p className="text-gray-600 text-sm mt-4">Select a game from the list to begin analysis.</p>
         )}
       </main>
 
-      {/* ── Right: move list + summary ────────────────────────────────────── */}
+      {/* ── Right: move list + summary ──────────────────────────────────── */}
       {plies.length > 0 && (
-        <aside className="w-64 shrink-0 border-l border-gray-800 flex flex-col p-3 overflow-hidden">
+        <aside
+          aria-label="Move analysis panel"
+          className="w-64 shrink-0 border-l border-gray-800 flex flex-col p-3 overflow-hidden"
+        >
           <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Moves</h2>
-          <MoveTable
-            plies={plies}
-            evals={evals}
-            currentPly={currentPly}
-            onJump={goTo}
-          />
+          <MoveTable plies={plies} evals={evals} currentPly={currentPly} onJump={goTo} />
           {analysisComplete && (
             <SummaryPanel plies={plies} evals={evals} onJump={goTo} />
           )}
