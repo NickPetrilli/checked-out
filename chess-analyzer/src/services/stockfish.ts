@@ -6,16 +6,24 @@ export interface EvalResult {
 
 let worker: Worker | null = null;
 let initPromise: Promise<void> | null = null;
-
-// All evaluations run sequentially via this chain.
 let chain = Promise.resolve();
 
-// ── Worker bootstrap ─────────────────────────────────────────────────────────
+// ── Worker bootstrap ──────────────────────────────────────────────────────────
 
-function waitForLine(w: Worker, predicate: (line: string) => boolean): Promise<void> {
-  return new Promise((resolve) => {
+function waitForLine(
+  w: Worker,
+  predicate: (line: string) => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      w.removeEventListener('message', handler);
+      reject(new Error('Chess engine timed out during initialization.'));
+    }, timeoutMs);
+
     const handler = ({ data }: MessageEvent<string>) => {
       if (typeof data === 'string' && predicate(data)) {
+        clearTimeout(timer);
         w.removeEventListener('message', handler);
         resolve();
       }
@@ -29,32 +37,34 @@ function ensureWorker(): Promise<void> {
 
   initPromise = (async () => {
     const w = new Worker('/stockfish-18-lite-single.js');
-    w.postMessage('uci');
-    await waitForLine(w, (l) => l.trim() === 'uciok');
-    w.postMessage('isready');
-    await waitForLine(w, (l) => l.trim() === 'readyok');
-    worker = w;
+    try {
+      w.postMessage('uci');
+      await waitForLine(w, (l) => l.trim() === 'uciok');
+      w.postMessage('isready');
+      await waitForLine(w, (l) => l.trim() === 'readyok');
+      worker = w;
+    } catch (err) {
+      w.terminate();
+      initPromise = null; // allow retry
+      throw err;
+    }
   })();
 
   return initPromise;
 }
 
-// ── Score helpers ─────────────────────────────────────────────────────────────
+// ── Score normalisation ───────────────────────────────────────────────────────
 
-/**
- * Stockfish returns scores from the perspective of the side to move.
- * Normalise to always be from white's perspective.
- */
 function normalisedScore(raw: number, fen: string): number {
   return fen.split(' ')[1] === 'b' ? -raw : raw;
 }
 
-// ── Core evaluation ──────────────────────────────────────────────────────────
+// ── Core evaluation ───────────────────────────────────────────────────────────
 
 function runEval(fen: string, depth: number): Promise<EvalResult> {
   return new Promise((resolve, reject) => {
     if (!worker) {
-      reject(new Error('Stockfish worker not ready'));
+      reject(new Error('Chess engine is not ready.'));
       return;
     }
     const w = worker;
@@ -75,8 +85,7 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
       const bmMatch = data.match(/^bestmove\s+(\S+)/);
       if (bmMatch) {
         w.removeEventListener('message', handler);
-        const bestMove = bmMatch[1] === '(none)' ? '' : bmMatch[1];
-        resolve({ score: lastScore, bestMove });
+        resolve({ score: lastScore, bestMove: bmMatch[1] === '(none)' ? '' : bmMatch[1] });
       }
     };
 
@@ -88,13 +97,14 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Evaluate a position. Requests are queued so only one runs at a time.
- */
+/** Call this on Analyzer mount to pre-warm the engine and surface init errors early. */
+export function ensureEngineReady(): Promise<void> {
+  return ensureWorker();
+}
+
 export async function evaluatePosition(fen: string, depth = 15): Promise<EvalResult> {
   await ensureWorker();
   const result = chain.then(() => runEval(fen, depth));
-  // Advance the tail; swallow errors so the chain never breaks permanently.
   chain = result.then(
     () => {},
     () => {},
