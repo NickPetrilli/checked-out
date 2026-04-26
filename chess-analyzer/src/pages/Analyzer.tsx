@@ -138,20 +138,49 @@ function ClassBadge({ c }: { c?: Classification }) {
   );
 }
 
-// ── Explanation card ──────────────────────────────────────────────────────────
+// ── Explanation panel (rendered in center column) ────────────────────────────
 
-function ExplanationCard({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+interface ExplanationPanelProps {
+  ply:            Ply;
+  classification: Classification;
+  text:           string | null; // null = loading
+  onDismiss:      () => void;
+}
+
+function ExplanationPanel({ ply, classification, text, onDismiss }: ExplanationPanelProps) {
+  const moveLabel = `Move ${ply.moveNumber}${ply.color === 'b' ? '…' : '.'} ${ply.san}`;
+  const classLabel = classification === 'blunder' ? '?? Blunder' : '? Mistake';
+  const classColor = classification === 'blunder' ? 'text-red-400' : 'text-orange-400';
+
   return (
-    <div className="explanation-fade-in mx-2 my-1 rounded-lg border-l-4 border-amber-500 bg-amber-950/30 p-3 flex gap-2">
-      <GraduationCap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
-      <p className="flex-1 text-xs text-gray-200 leading-relaxed">{text}</p>
-      <button
-        onClick={onDismiss}
-        aria-label="Dismiss explanation"
-        className="shrink-0 text-gray-500 hover:text-gray-300 transition-colors text-sm leading-none"
-      >
-        ✕
-      </button>
+    <div className="explanation-fade-in w-full rounded-lg border border-amber-700/40 border-l-4 border-l-amber-500 bg-amber-950/20 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-700/30 bg-amber-950/30">
+        <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
+        <span className="text-amber-300 font-semibold text-sm">AI Coach</span>
+        <span className="text-gray-500 text-xs">·</span>
+        <span className="text-gray-400 text-xs">{moveLabel}</span>
+        <span className={`text-xs font-semibold ${classColor}`}>{classLabel}</span>
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss explanation"
+          className="ml-auto text-gray-500 hover:text-gray-300 transition-colors text-sm leading-none shrink-0"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3">
+        {text === null ? (
+          <div className="flex items-center gap-3 text-sm text-amber-300">
+            <span className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+            Coach is thinking…
+          </div>
+        ) : (
+          <p className="text-sm text-gray-200 leading-relaxed">{text}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -191,25 +220,22 @@ function PlayerNameplate({ name, rating, color, isUser }: NameplateProps) {
 // ── Move table ────────────────────────────────────────────────────────────────
 
 interface MoveTableProps {
-  plies:                Ply[];
-  evals:                (PlyEval | null)[];
-  currentPly:           number;
-  onJump:               (idx: number) => void;
-  whiteName?:           string;
-  blackName?:           string;
-  username?:            string;
-  explanations:         Record<number, string>;
-  loadingExplainPly:    number | null;
-  activeExplanationPly: number | null;
-  onExplain:            (plyIdx: number) => void;
-  onDismissExplanation: () => void;
+  plies:             Ply[];
+  evals:             (PlyEval | null)[];
+  currentPly:        number;
+  onJump:            (idx: number) => void;
+  whiteName?:        string;
+  blackName?:        string;
+  username?:         string;
+  explanations:      Record<number, string>;
+  loadingExplainPly: number | null;
+  onExplain:         (plyIdx: number) => void;
 }
 
 function MoveTable({
   plies, evals, currentPly, onJump,
   whiteName, blackName, username,
-  explanations, loadingExplainPly, activeExplanationPly,
-  onExplain, onDismissExplanation,
+  explanations, loadingExplainPly, onExplain,
 }: MoveTableProps) {
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -350,15 +376,6 @@ function MoveTable({
                 )}
               </div>
 
-              {/* Explanation card — white move */}
-              {activeExplanationPly === wi && explanations[wi] && (
-                <ExplanationCard text={explanations[wi]} onDismiss={onDismissExplanation} />
-              )}
-
-              {/* Explanation card — black move */}
-              {black && activeExplanationPly === bi && explanations[bi] && (
-                <ExplanationCard text={explanations[bi]} onDismiss={onDismissExplanation} />
-              )}
             </li>
           );
         })}
@@ -773,6 +790,24 @@ export default function Analyzer() {
           )}
         </div>
 
+        {/* AI Coach explanation panel */}
+        {(activeExplanationPly !== null || loadingExplainPly !== null) && (() => {
+          const plyIdx = activeExplanationPly ?? loadingExplainPly!;
+          const ply    = plies[plyIdx];
+          const cls    = classifyPly(evals, plyIdx, ply?.color ?? 'w').classification;
+          if (!ply || !cls) return null;
+          return (
+            <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
+              <ExplanationPanel
+                ply={ply}
+                classification={cls}
+                text={explanations[plyIdx] ?? null}
+                onDismiss={() => setActiveExplanationPly(null)}
+              />
+            </div>
+          );
+        })()}
+
         {/* Analysis progress */}
         {isAnalyzing && (
           <div role="status" aria-live="polite" style={{ width: 'min(100%, calc(100vh - 240px))' }}>
@@ -821,9 +856,7 @@ export default function Analyzer() {
               username={username}
               explanations={explanations}
               loadingExplainPly={loadingExplainPly}
-              activeExplanationPly={activeExplanationPly}
               onExplain={handleExplain}
-              onDismissExplanation={() => setActiveExplanationPly(null)}
             />
 
             {analysisComplete && (
