@@ -46,6 +46,9 @@ export interface GameMove {
   bestMove?: string;
   isMistake?: boolean;
   isBlunder?: boolean;
+  explanation?: string;
+  explanationLoading?: boolean;
+  explanationError?: string | null;
 }
 
 export type Square =
