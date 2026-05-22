@@ -9,7 +9,7 @@ type ResultFilter   = 'all' | 'wins' | 'losses' | 'draws';
 type GameTypeFilter = 'all' | 'online' | 'computer';
 
 interface GameListProps {
-  games: ParsedGame[];
+  games:        ParsedGame[];
   selectedGame: ParsedGame | null;
   onSelectGame: (game: ParsedGame) => void;
 }
@@ -21,15 +21,21 @@ function resultLabel(result: ParsedGame['result']): string {
 }
 
 function resultColor(result: ParsedGame['result']): string {
-  if (result === 'white') return 'text-green-400';
-  if (result === 'black') return 'text-red-400';
-  return 'text-yellow-400';
+  if (result === 'white') return 'var(--brand-green)';
+  if (result === 'black') return 'var(--move-blunder)';
+  return 'var(--move-inaccuracy)';
 }
 
 function playerResultFor(game: ParsedGame, username: string): 'win' | 'loss' | 'draw' {
   if (game.result === 'draw') return 'draw';
   const playingWhite = game.white.toLowerCase() === username.toLowerCase();
   return (game.result === 'white') === playingWhite ? 'win' : 'loss';
+}
+
+function prColor(pr: 'win' | 'loss' | 'draw'): string {
+  if (pr === 'win')  return 'var(--brand-green)';
+  if (pr === 'loss') return 'var(--move-blunder)';
+  return 'var(--move-inaccuracy)';
 }
 
 export default function GameList({ games, selectedGame, onSelectGame }: GameListProps) {
@@ -44,13 +50,13 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
       if (colorFilter !== 'all') {
         const playingWhite = game.white.toLowerCase() === username.toLowerCase();
         if (colorFilter === 'white' && !playingWhite) return false;
-        if (colorFilter === 'black' && playingWhite) return false;
+        if (colorFilter === 'black' && playingWhite)  return false;
       }
       if (resultFilter !== 'all') {
         const pr = playerResultFor(game, username);
-        if (resultFilter === 'wins' && pr !== 'win') return false;
-        if (resultFilter === 'losses' && pr !== 'loss') return false;
-        if (resultFilter === 'draws' && pr !== 'draw') return false;
+        if (resultFilter === 'wins'   && pr !== 'win')   return false;
+        if (resultFilter === 'losses' && pr !== 'loss')  return false;
+        if (resultFilter === 'draws'  && pr !== 'draw')  return false;
       }
       if (gameTypeFilter !== 'all' && game.gameType !== gameTypeFilter) return false;
       return true;
@@ -58,16 +64,18 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
   }, [games, colorFilter, resultFilter, gameTypeFilter, username]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.length > PAGE_SIZE
+  const paginated  = filtered.length > PAGE_SIZE
     ? filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
     : filtered;
 
-  function handleFilterChange() {
-    setPage(0);
-  }
+  function handleFilterChange() { setPage(0); }
 
   if (games.length === 0) {
-    return <p className="text-gray-500 text-center py-8 text-sm">No games loaded.</p>;
+    return (
+      <p className="text-center py-8 text-sm" style={{ color: 'var(--text-secondary)' }}>
+        No games loaded.
+      </p>
+    );
   }
 
   return (
@@ -75,28 +83,25 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
       {/* Filter bar */}
       <div className="flex gap-2 flex-wrap">
         <FilterSelect
-          label="Color"
           value={colorFilter}
           options={[
-            { value: 'all', label: 'All colors' },
+            { value: 'all',   label: 'All colors' },
             { value: 'white', label: 'White' },
             { value: 'black', label: 'Black' },
           ]}
           onChange={(v) => { setColorFilter(v as ColorFilter); handleFilterChange(); }}
         />
         <FilterSelect
-          label="Result"
           value={resultFilter}
           options={[
-            { value: 'all', label: 'All results' },
-            { value: 'wins', label: 'Wins' },
+            { value: 'all',    label: 'All results' },
+            { value: 'wins',   label: 'Wins' },
             { value: 'losses', label: 'Losses' },
-            { value: 'draws', label: 'Draws' },
+            { value: 'draws',  label: 'Draws' },
           ]}
           onChange={(v) => { setResultFilter(v as ResultFilter); handleFilterChange(); }}
         />
         <FilterSelect
-          label="Opponent"
           value={gameTypeFilter}
           options={[
             { value: 'all',      label: 'All opponents' },
@@ -105,17 +110,24 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
           ]}
           onChange={(v) => { setGameTypeFilter(v as GameTypeFilter); handleFilterChange(); }}
         />
-        <span className="ml-auto text-xs text-gray-500 self-center">
+        <span className="ml-auto text-xs self-center" style={{ color: 'var(--text-secondary)' }}>
           {filtered.length} game{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* List */}
       {filtered.length === 0 ? (
-        <p className="text-gray-500 text-center py-8 text-sm">No games match the current filters.</p>
+        <p className="text-center py-8 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          No games match the current filters.
+        </p>
       ) : (
-        <ul className="divide-y divide-gray-700/60 border border-gray-700 rounded-lg overflow-hidden" role="listbox" aria-label="Games">
-          {paginated.map((game) => {
+        <ul
+          className="overflow-hidden rounded-lg"
+          style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+          role="listbox"
+          aria-label="Games"
+        >
+          {paginated.map((game, idx) => {
             const isSelected = selectedGame?.id === game.id;
             const pr = playerResultFor(game, username);
             return (
@@ -132,40 +144,49 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
                   }
                 }}
                 aria-label={`${game.white} vs ${game.black}, ${resultLabel(game.result)}, ${game.date}`}
-                className={[
-                  'flex flex-col px-3 py-2.5 cursor-pointer transition-colors text-sm gap-0.5 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500',
-                  isSelected
-                    ? 'bg-blue-900/50 border-l-2 border-blue-500'
-                    : 'hover:bg-gray-800 border-l-2 border-transparent',
-                ].join(' ')}
+                className="flex flex-col px-3 py-2.5 cursor-pointer text-sm gap-0.5 focus:outline-none transition-colors"
+                style={{
+                  borderLeft: `2px solid ${isSelected ? 'var(--brand-green)' : 'transparent'}`,
+                  backgroundColor: isSelected ? 'var(--bg-tertiary)' : 'transparent',
+                  borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                }}
+                onMouseEnter={e => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+                }}
+                onMouseLeave={e => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
                 {/* Players row */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-gray-100 truncate">
+                  <span className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                     {game.white}
-                    <span className="text-gray-500 font-normal text-xs ml-1">({game.whiteRating})</span>
-                    <span className="text-gray-500 font-normal mx-1">vs</span>
+                    <span className="font-normal text-xs ml-1" style={{ color: 'var(--text-secondary)' }}>
+                      ({game.whiteRating})
+                    </span>
+                    <span className="font-normal mx-1" style={{ color: 'var(--text-secondary)' }}>vs</span>
                     {game.black}
-                    <span className="text-gray-500 font-normal text-xs ml-1">({game.blackRating})</span>
+                    <span className="font-normal text-xs ml-1" style={{ color: 'var(--text-secondary)' }}>
+                      ({game.blackRating})
+                    </span>
                   </span>
-                  <span className={`font-bold tabular-nums shrink-0 ${resultColor(game.result)}`}>
+                  <span
+                    className="font-bold tabular-nums shrink-0"
+                    style={{ color: resultColor(game.result) }}
+                  >
                     {resultLabel(game.result)}
                   </span>
                 </div>
 
                 {/* Meta row */}
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                   <span>{game.date}</span>
                   <span>·</span>
                   <span>{game.timeControl}</span>
                   {username && (
                     <>
                       <span>·</span>
-                      <span className={
-                        pr === 'win' ? 'text-green-500' :
-                        pr === 'loss' ? 'text-red-500' :
-                        'text-yellow-500'
-                      }>
+                      <span style={{ color: prColor(pr) }}>
                         {pr === 'win' ? 'Win' : pr === 'loss' ? 'Loss' : 'Draw'}
                       </span>
                     </>
@@ -183,17 +204,19 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
           <button
             onClick={() => setPage((p) => p - 1)}
             disabled={page === 0}
-            className="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded text-gray-300 transition-colors"
+            className="btn-secondary disabled:opacity-30"
+            style={{ fontSize: 11, padding: '4px 10px' }}
           >
             ← Prev
           </button>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             Page {page + 1} of {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={page >= totalPages - 1}
-            className="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded text-gray-300 transition-colors"
+            className="btn-secondary disabled:opacity-30"
+            style={{ fontSize: 11, padding: '4px 10px' }}
           >
             Next →
           </button>
@@ -204,8 +227,7 @@ export default function GameList({ games, selectedGame, onSelectGame }: GameList
 }
 
 interface FilterSelectProps {
-  label: string;
-  value: string;
+  value:   string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
 }
@@ -215,7 +237,12 @@ function FilterSelect({ value, options, onChange }: FilterSelectProps) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="text-xs rounded px-2 py-1.5 focus:outline-none"
+      style={{
+        backgroundColor: 'var(--bg-tertiary)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        color: 'var(--text-secondary)',
+      }}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>

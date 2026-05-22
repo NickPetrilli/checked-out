@@ -17,7 +17,7 @@ type ResultFilter = 'all' | 'wins' | 'losses';
 
 interface MoveEvent {
   from: Square;
-  to: Square;
+  to:   Square;
   piece: 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
   color: 'w' | 'b';
   userResult: 'win' | 'loss' | 'draw';
@@ -37,26 +37,37 @@ function PillGroup<T extends string>({
   groupLabel: string;
 }) {
   return (
-    <div role="group" aria-label={groupLabel} className="flex rounded-lg overflow-hidden border border-gray-700">
-      {options.map((opt, i) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          aria-pressed={value === opt.value}
-          aria-label={`${groupLabel}: ${opt.label}`}
-          className={[
-            'px-3 py-1.5 text-xs font-medium transition-colors',
-            i > 0 && 'border-l border-gray-700',
-            value === opt.value
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div
+      role="group"
+      aria-label={groupLabel}
+      className="flex rounded-lg overflow-hidden"
+      style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      {options.map((opt, i) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            aria-pressed={active}
+            aria-label={`${groupLabel}: ${opt.label}`}
+            className="px-3 py-1.5 text-xs font-medium transition-colors"
+            style={{
+              borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.08)' : undefined,
+              backgroundColor: active ? 'var(--brand-green)' : 'var(--bg-tertiary)',
+              color: active ? '#fff' : 'var(--text-secondary)',
+            }}
+            onMouseEnter={e => {
+              if (!active) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+            }}
+            onMouseLeave={e => {
+              if (!active) e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -105,17 +116,11 @@ export default function Heatmap() {
     150,
   );
 
-  // ── Step 1: parse all games once ───────────────────────────────────────────
-  // Re-runs only when the games list or username changes.
   const allMoveEvents = useMemo<MoveEvent[]>(() => {
     const events: MoveEvent[] = [];
     for (const game of games) {
       const chess = new Chess();
-      try {
-        chess.loadPgn(game.pgn);
-      } catch {
-        continue;
-      }
+      try { chess.loadPgn(game.pgn); } catch { continue; }
 
       const userPlayingWhite = game.white.toLowerCase() === username.toLowerCase();
       let userResult: 'win' | 'loss' | 'draw';
@@ -140,19 +145,17 @@ export default function Heatmap() {
     return events;
   }, [games, username]);
 
-  // ── Step 2: filter ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const { pieceFilter: pf, colorFilter: cf, resultFilter: rf } = debouncedFilters;
     return allMoveEvents.filter((ev) => {
-      if (pf !== 'all' && ev.piece !== pf) return false;
-      if (cf !== 'both' && ev.color !== cf) return false;
-      if (rf === 'wins'   && ev.userResult !== 'win')  return false;
-      if (rf === 'losses' && ev.userResult !== 'loss') return false;
+      if (pf !== 'all'   && ev.piece !== pf)            return false;
+      if (cf !== 'both'  && ev.color !== cf)            return false;
+      if (rf === 'wins'   && ev.userResult !== 'win')   return false;
+      if (rf === 'losses' && ev.userResult !== 'loss')  return false;
       return true;
     });
   }, [allMoveEvents, debouncedFilters]);
 
-  // ── Step 3: aggregate into 8×8 matrix ──────────────────────────────────────
   const heatmapData = useMemo<Partial<HeatmapData>>(() => {
     const counts: Partial<HeatmapData> = {};
     for (const ev of filtered) {
@@ -164,31 +167,30 @@ export default function Heatmap() {
 
   const totalMoves = filtered.length;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col items-center gap-6 p-6 min-h-[calc(100vh-52px)]">
+    <div
+      className="flex flex-col items-center gap-6 p-6 min-h-[calc(100vh-52px)]"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-2xl font-semibold text-white">Move Heatmap</h2>
-        <p className="text-gray-400 text-sm mt-1">
+        <h2 className="text-2xl font-semibold" style={{ color: 'var(--text-accent)' }}>Move Heatmap</h2>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
           Visualise square activity across {games.length} loaded game{games.length !== 1 ? 's' : ''}.
         </p>
       </div>
 
-      {/* States */}
-      {loading && <p className="text-gray-400 text-sm">Loading games…</p>}
-      {error   && <p className="text-red-400 text-sm">{error}</p>}
+      {loading && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading games…</p>}
+      {error   && <p className="text-sm" style={{ color: 'var(--move-blunder)' }}>{error}</p>}
+
       {!loading && !error && games.length === 0 && (
         <div className="flex flex-col items-center gap-4 mt-16 text-center" role="status">
           <p className="text-4xl select-none" aria-hidden="true">♟</p>
-          <p className="text-gray-300 font-medium">No games loaded</p>
-          <p className="text-gray-500 text-sm max-w-xs">
+          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>No games loaded</p>
+          <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
             Fetch games for a player first to explore their move heatmap.
           </p>
-          <Link
-            to="/"
-            className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
-          >
+          <Link to="/" className="btn-primary mt-2 text-sm">
             Go to Home
           </Link>
         </div>
@@ -198,30 +200,26 @@ export default function Heatmap() {
         <>
           {/* Filter bar */}
           <div className="flex flex-wrap gap-3 justify-center">
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-xs text-gray-500 font-medium px-1">Piece</span>
-              <PillGroup options={PIECE_OPTIONS} value={pieceFilter} onChange={setPieceFilter} groupLabel="Piece" />
-            </div>
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-xs text-gray-500 font-medium px-1">Color</span>
-              <PillGroup options={COLOR_OPTIONS} value={colorFilter} onChange={setColorFilter} groupLabel="Color" />
-            </div>
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-xs text-gray-500 font-medium px-1">Square type</span>
-              <PillGroup options={MOVETYPE_OPTIONS} value={moveType} onChange={setMoveType} groupLabel="Square type" />
-            </div>
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-xs text-gray-500 font-medium px-1">Result</span>
-              <PillGroup options={RESULT_OPTIONS} value={resultFilter} onChange={setResultFilter} groupLabel="Result" />
-            </div>
+            {[
+              { label: 'Piece',       el: <PillGroup options={PIECE_OPTIONS}    value={pieceFilter}  onChange={setPieceFilter}  groupLabel="Piece" /> },
+              { label: 'Color',       el: <PillGroup options={COLOR_OPTIONS}    value={colorFilter}  onChange={setColorFilter}  groupLabel="Color" /> },
+              { label: 'Square type', el: <PillGroup options={MOVETYPE_OPTIONS} value={moveType}     onChange={setMoveType}     groupLabel="Square type" /> },
+              { label: 'Result',      el: <PillGroup options={RESULT_OPTIONS}   value={resultFilter} onChange={setResultFilter} groupLabel="Result" /> },
+            ].map(({ label, el }) => (
+              <div key={label} className="flex flex-col items-start gap-1">
+                <span className="text-xs font-medium px-1" style={{ color: 'var(--text-secondary)' }}>
+                  {label}
+                </span>
+                {el}
+              </div>
+            ))}
           </div>
 
           {/* Move count */}
-          <p className="text-gray-500 text-xs">
+          <p className="text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
             {totalMoves.toLocaleString()} move{totalMoves !== 1 ? 's' : ''} matching current filters
           </p>
 
-          {/* Grid */}
           <HeatmapGrid data={heatmapData} />
         </>
       )}

@@ -52,7 +52,7 @@ function Legend({ max }: { max: number }) {
         className="h-3 rounded"
         style={{ background: LEGEND_GRADIENT, marginLeft: 20 }}
       />
-      <div className="flex justify-between text-xs text-gray-500" style={{ marginLeft: 20 }}>
+      <div className="flex justify-between text-xs" style={{ marginLeft: 20, color: 'var(--text-secondary)' }}>
         <span>0</span>
         <span>{max > 0 ? Math.round(max / 2) : '—'}</span>
         <span>{max > 0 ? max : '—'}</span>
@@ -90,7 +90,7 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
           <div key={rank} className="flex">
             {/* Rank label */}
             <div
-              className="flex items-center justify-center text-xs text-gray-500 shrink-0"
+              className="flex items-center justify-center text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}
               style={{ width: 20, height: CELL }}
             >
               {rank}
@@ -131,7 +131,7 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
           {FILES.map((file) => (
             <div
               key={file}
-              className="flex items-center justify-center text-xs text-gray-500"
+              className="flex items-center justify-center text-xs" style={{ color: 'var(--text-secondary)' }}
               style={{ width: CELL }}
             >
               {file}
@@ -142,7 +142,8 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
         {/* Tooltip */}
         {tooltip && (
           <div
-            className="absolute z-20 px-2 py-1 bg-gray-900 border border-gray-600 rounded text-xs text-white whitespace-nowrap pointer-events-none shadow-lg"
+            className="absolute z-20 px-2 py-1 rounded text-xs whitespace-nowrap pointer-events-none shadow-lg"
+            style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)' }}
             style={{
               left: tooltip.x,
               top: tooltip.y - 4,
