@@ -27,7 +27,7 @@ function NavBar() {
       style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       {/* Logo */}
-      <span className="mr-2 text-base font-bold text-white select-none" aria-hidden="true">
+      <span className="mr-2 text-2xl text-white select-none" aria-hidden="true">
         ♟
       </span>
       <span className="font-bold text-white text-base mr-auto">Checked Out</span>
@@ -49,7 +49,7 @@ function NavBar() {
             onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
             onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
           >
-            ✕
+            &#x2715;
           </button>
         </div>
       )}

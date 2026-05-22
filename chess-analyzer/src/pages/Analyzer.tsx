@@ -287,11 +287,11 @@ function ExplanationPanel({ ply, classification, text, onDismiss }: ExplanationP
           onClick={onDismiss}
           aria-label="Dismiss explanation"
           className="ml-auto text-sm leading-none shrink-0 transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')
+          style={{ color: 'var(--text-secondary)' }}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
         >
-          ✕
+          &#x2715;
         </button>
       </div>
 

@@ -95,21 +95,6 @@
 /* ── Base styles ──────────────────────────────────────────────────────────── */
 body {
   background-color: var(--bg-primary);
-  background-image:
-    repeating-linear-gradient(
-      92deg,
-      rgba(255, 200, 120, 0.025) 0px,
-      rgba(255, 200, 120, 0.025) 1px,
-      transparent 1px,
-      transparent 18px
-    ),
-    repeating-linear-gradient(
-      178deg,
-      rgba(180, 100, 30, 0.03) 0px,
-      rgba(180, 100, 30, 0.03) 1px,
-      transparent 1px,
-      transparent 40px
-    );
   color: var(--text-primary);
   font-family: "Noto Sans", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
