@@ -13,6 +13,8 @@ import type { ParsedGame } from '../types/chess';
 
 interface Ply {
   san: string;
+  from: string;
+  to: string;
   color: 'w' | 'b';
   moveNumber: number;
   fenBefore: string;
@@ -22,18 +24,18 @@ interface Ply {
 interface PlyEval {
   normalizedScore: number;
   bestMove: string;
+  pvSan: string[];
 }
 
-type Classification = 'blunder' | 'mistake';
+type Classification = 'blunder' | 'mistake' | 'inaccuracy';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPTH             = 15;
-const BLUNDER_THRESHOLD = 300;
-const MISTAKE_THRESHOLD = 100;
-const RIGHT_MIN_WIDTH   = 200;
-const RIGHT_MAX_WIDTH   = 560;
-const RIGHT_DEFAULT     = 300;
+const DEPTH                = 15;
+const BLUNDER_THRESHOLD    = 300;
+const MISTAKE_THRESHOLD    = 100;
+const INACCURACY_THRESHOLD = 50;
+const RIGHT_WIDTH          = 340;
 
 // ── Board themes ─────────────────────────────────────────────────────────────
 
@@ -52,7 +54,7 @@ type BoardTheme = typeof BOARD_THEMES[number];
 
 function loadSavedTheme(): BoardTheme {
   const saved = localStorage.getItem('chessboard-theme');
-  return BOARD_THEMES.find(t => t.id === saved) ?? BOARD_THEMES[0];
+  return BOARD_THEMES.find(t => t.id === saved) ?? BOARD_THEMES.find(t => t.id === 'walnut')!;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,6 +70,16 @@ function evalBarWhitePct(score: number): number {
   return Math.min(100, Math.max(0, 50 + score / 20));
 }
 
+// Compact label for the eval bar: 1 decimal, no sign on mates, "0.0" for near-zero.
+// Near-zero threshold: ±20cp (±0.20 pawns) per spec.
+function formatEvalLabel(score: number): string {
+  if (score >= 9_900)  return `M${10_000 - score}`;
+  if (score <= -9_900) return `M${10_000 + score}`;
+  if (Math.abs(score) < 20) return '0.0';
+  const pawns = (Math.abs(score) / 100).toFixed(1);
+  return score > 0 ? `+${pawns}` : `-${pawns}`;
+}
+
 function classifyPly(
   evals: (PlyEval | null)[],
   plyIdx: number,
@@ -80,16 +92,19 @@ function classifyPly(
     color === 'w'
       ? before.normalizedScore - after.normalizedScore
       : after.normalizedScore - before.normalizedScore;
-  if (drop >= BLUNDER_THRESHOLD) return { classification: 'blunder', scoreDrop: drop };
-  if (drop >= MISTAKE_THRESHOLD) return { classification: 'mistake', scoreDrop: drop };
+  if (drop >= BLUNDER_THRESHOLD)    return { classification: 'blunder',    scoreDrop: drop };
+  if (drop >= MISTAKE_THRESHOLD)    return { classification: 'mistake',    scoreDrop: drop };
+  if (drop >= INACCURACY_THRESHOLD) return { classification: 'inaccuracy', scoreDrop: drop };
   return { scoreDrop: Math.max(0, drop) };
 }
 
-function parsePlies(pgn: string): { plies: Ply[]; fens: string[] } {
+function parsePlies(pgn: string): { plies: Ply[]; fens: string[]; opening: string | null } {
   const tmp = new Chess();
   tmp.loadPgn(pgn);
   const history  = tmp.history({ verbose: true });
-  const setupFen = tmp.header()['FEN'];
+  const headers  = tmp.header();
+  const setupFen = headers['FEN'];
+  const opening  = headers['Opening'] ?? null;
 
   const chess = new Chess();
   if (setupFen) chess.load(setupFen);
@@ -102,6 +117,8 @@ function parsePlies(pgn: string): { plies: Ply[]; fens: string[] } {
     chess.move(move);
     plies.push({
       san: move.san,
+      from: move.from,
+      to: move.to,
       color: move.color,
       moveNumber:
         move.color === 'w'
@@ -112,48 +129,133 @@ function parsePlies(pgn: string): { plies: Ply[]; fens: string[] } {
     });
     fens.push(chess.fen());
   }
-  return { plies, fens };
+  return { plies, fens, opening };
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function EvalBar({ score }: { score: number | undefined }) {
-  const pct   = evalBarWhitePct(score ?? 0);
-  const label = score !== undefined ? formatScore(score) : '—';
+  const pct      = evalBarWhitePct(score ?? 0);
+  const rawScore = score ?? 0;
+  const label    = score !== undefined ? formatEvalLabel(rawScore) : null;
+
+  // Clamp label position so it never renders flush against the very edge of the bar.
+  // 5% margin at each end ensures the pill is always fully visible.
+  const labelTopPct = Math.max(5, Math.min(95, 100 - pct));
+
   return (
+    // Outer div: position:relative anchor for the label — NO overflow:hidden here
+    // so the label pill can extend ±2px beyond the 20px width without being clipped.
     <div
       role="meter"
-      aria-label={`Position evaluation: ${label}`}
-      aria-valuenow={score ?? 0}
+      aria-label={`Position evaluation: ${label ?? '—'}`}
+      aria-valuenow={rawScore}
       aria-valuemin={-1000}
       aria-valuemax={1000}
-      className="w-full h-3 rounded-full overflow-hidden bg-gray-700 flex"
+      style={{
+        position: 'relative',
+        width: 20,
+        minHeight: 80,
+        flexShrink: 0,
+        alignSelf: 'stretch',
+      }}
     >
-      <div className="h-full bg-gray-100 transition-all duration-300" style={{ width: `${pct}%` }} />
-      <div className="h-full flex-1 bg-gray-800" />
+      {/* Inner fills container — owns the rounded corners and clips backgrounds */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 2,
+          overflow: 'hidden',
+          backgroundColor: 'var(--eval-bar-bg)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Black advantage — top section */}
+        <div
+          style={{
+            flexGrow: 100 - pct,
+            flexShrink: 0,
+            flexBasis: 0,
+            backgroundColor: 'var(--eval-black)',
+            transition: 'flex-grow 0.3s ease',
+          }}
+        />
+        {/* White advantage — bottom section */}
+        <div
+          style={{
+            flexGrow: pct,
+            flexShrink: 0,
+            flexBasis: 0,
+            backgroundColor: 'var(--eval-white)',
+            transition: 'flex-grow 0.3s ease',
+          }}
+        />
+      </div>
+
+      {/* Score label floating at the split boundary.
+          Cream pill (#f0d9b5 tinted) reads cleanly against both the dark
+          (black section) and light (white section) backgrounds. */}
+      {label !== null && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: `${labelTopPct}%`,
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 10,
+            pointerEvents: 'none',
+            backgroundColor: 'rgba(240, 217, 181, 0.92)',
+            borderRadius: 2,
+            padding: '1px 3px',
+            whiteSpace: 'nowrap',
+            transition: 'top 0.3s ease',
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--font-mono, "Roboto Mono", monospace)',
+              fontSize: 9,
+              fontWeight: 700,
+              color: '#1a1a1a',
+              lineHeight: 1.3,
+              letterSpacing: '-0.3px',
+            }}
+          >
+            {label}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
+const CLASS_META: Record<Classification, { symbol: string; color: string; label: string }> = {
+  blunder:    { symbol: '??', color: 'var(--move-blunder)',    label: 'Blunder' },
+  mistake:    { symbol: '?',  color: 'var(--move-mistake)',    label: 'Mistake' },
+  inaccuracy: { symbol: '?!', color: 'var(--move-inaccuracy)', label: 'Inaccuracy' },
+};
+
 function ClassBadge({ c }: { c?: Classification }) {
   if (!c) return null;
-  return c === 'blunder' ? (
+  const { symbol, color, label } = CLASS_META[c];
+  return (
     <span
-      aria-label="Blunder"
-      title="Blunder (−3 pawns or more)"
-      className="inline-flex items-center gap-0.5 shrink-0"
+      aria-hidden="true"
+      title={label}
+      style={{
+        color,
+        fontWeight: 700,
+        fontSize: 11,
+        lineHeight: 1,
+        flexShrink: 0,
+        letterSpacing: '-0.5px',
+        fontFamily: '"Roboto Mono", monospace',
+      }}
     >
-      <span className="text-red-400 font-bold text-xs" aria-hidden="true">??</span>
-      <span className="text-red-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Blunder</span>
-    </span>
-  ) : (
-    <span
-      aria-label="Mistake"
-      title="Mistake (−1 to −3 pawns)"
-      className="inline-flex items-center gap-0.5 shrink-0"
-    >
-      <span className="text-orange-400 font-bold text-xs" aria-hidden="true">?</span>
-      <span className="text-orange-400 font-bold text-xs uppercase tracking-wide" aria-hidden="true">Mistake</span>
+      {symbol}
     </span>
   );
 }
@@ -178,13 +280,16 @@ function ExplanationPanel({ ply, classification, text, onDismiss }: ExplanationP
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-700/30 bg-amber-950/30">
         <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
         <span className="text-amber-300 font-semibold text-sm">AI Coach</span>
-        <span className="text-gray-500 text-xs">·</span>
-        <span className="text-gray-400 text-xs">{moveLabel}</span>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>·</span>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{moveLabel}</span>
         <span className={`text-xs font-semibold ${classColor}`}>{classLabel}</span>
         <button
           onClick={onDismiss}
           aria-label="Dismiss explanation"
-          className="ml-auto text-gray-500 hover:text-gray-300 transition-colors text-sm leading-none shrink-0"
+          className="ml-auto text-sm leading-none shrink-0 transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')
         >
           ✕
         </button>
@@ -198,7 +303,7 @@ function ExplanationPanel({ ply, classification, text, onDismiss }: ExplanationP
             Coach is thinking…
           </div>
         ) : (
-          <p className="text-sm text-gray-200 leading-relaxed">{text}</p>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{text}</p>
         )}
       </div>
     </div>
@@ -216,23 +321,40 @@ interface NameplateProps {
 
 function PlayerNameplate({ name, rating, color, isUser }: NameplateProps) {
   return (
-    <div className="flex items-center gap-2 w-full">
-      <span
+    <div className="flex items-center gap-2.5 py-1.5 w-full">
+      {/* Avatar circle */}
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+        style={{
+          backgroundColor: color === 'white' ? 'rgba(240,217,181,0.12)' : 'rgba(30,28,25,0.85)',
+          border: `1px solid ${color === 'white' ? 'rgba(240,217,181,0.22)' : 'rgba(255,255,255,0.07)'}`,
+          color: 'var(--text-secondary)',
+        }}
         aria-hidden="true"
-        className={[
-          'w-4 h-4 rounded-sm shrink-0 border',
-          color === 'white' ? 'bg-gray-100 border-gray-400' : 'bg-gray-800 border-gray-600',
-        ].join(' ')}
-      />
-      <span className={['font-semibold text-sm truncate', isUser ? 'text-white' : 'text-gray-300'].join(' ')}>
-        {name}
-      </span>
-      <span className="text-gray-500 text-xs tabular-nums shrink-0">({rating})</span>
-      {isUser && (
-        <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-600 text-white shrink-0">
-          You
+      >
+        {name.charAt(0).toUpperCase()}
+      </div>
+
+      {/* Name + rating */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span
+          className="font-semibold text-sm truncate"
+          style={{ color: isUser ? 'var(--text-accent)' : 'var(--text-primary)' }}
+        >
+          {name}
         </span>
-      )}
+        <span className="text-xs tabular-nums shrink-0" style={{ color: 'var(--text-secondary)' }}>
+          ({rating})
+        </span>
+        {isUser && (
+          <span
+            className="px-1.5 py-0.5 rounded text-xs font-bold shrink-0"
+            style={{ backgroundColor: 'var(--brand-green)', color: '#fff' }}
+          >
+            You
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -244,9 +366,7 @@ interface MoveTableProps {
   evals:             (PlyEval | null)[];
   currentPly:        number;
   onJump:            (idx: number) => void;
-  whiteName?:        string;
-  blackName?:        string;
-  username?:         string;
+  openingName:       string | null;
   explanations:      Record<number, string>;
   loadingExplainPly: number | null;
   onExplain:         (plyIdx: number) => void;
@@ -254,10 +374,10 @@ interface MoveTableProps {
 
 function MoveTable({
   plies, evals, currentPly, onJump,
-  whiteName, blackName, username,
-  explanations, loadingExplainPly, onExplain,
+  openingName, explanations, loadingExplainPly, onExplain,
 }: MoveTableProps) {
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef   = useRef<HTMLButtonElement>(null);
+  const isExplaining = loadingExplainPly !== null;
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest' });
@@ -268,134 +388,166 @@ function MoveTable({
     pairs.push([plies[i], i, plies[i + 1], i + 1]);
   }
 
-  const isExplaining   = loadingExplainPly !== null;
-  const userIsWhite    = username && whiteName && username.toLowerCase() === whiteName.toLowerCase();
-  const userIsBlack    = username && blackName && username.toLowerCase() === blackName.toLowerCase();
+  // Shared inline style for a move button — layout + typography only.
+  // Active/hover backgrounds and the green left-border are handled by the
+  // .move-btn CSS class in index.css to avoid inline-style specificity clashes.
+  function moveBtnStyle(active: boolean): React.CSSProperties {
+    return {
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      padding: '4px 8px',
+      fontFamily: '"Roboto Mono", monospace',
+      fontSize: 14,
+      lineHeight: 1.4,
+      color: active ? 'var(--text-accent)' : 'var(--text-primary)',
+      textAlign: 'left',
+      cursor: 'pointer',
+      minWidth: 0,
+      outline: 'none',
+    };
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Column headers */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-700 shrink-0 bg-gray-900">
-        <span className="w-7 shrink-0" aria-hidden="true" />
-        <div className="flex items-center gap-1 flex-1 min-w-0">
-          <span className="w-2.5 h-2.5 rounded-full bg-gray-100 border border-gray-500 shrink-0" aria-hidden="true" />
-          <span className="text-xs font-semibold text-gray-300 truncate">{whiteName ?? 'White'}</span>
-          {userIsWhite && <span className="text-xs font-bold text-blue-400 shrink-0">You</span>}
-        </div>
-        <div className="flex items-center gap-1 flex-1 min-w-0">
-          <span className="w-2.5 h-2.5 rounded-full bg-gray-800 border border-gray-500 shrink-0" aria-hidden="true" />
-          <span className="text-xs font-semibold text-gray-300 truncate">{blackName ?? 'Black'}</span>
-          {userIsBlack && <span className="text-xs font-bold text-blue-400 shrink-0">You</span>}
-        </div>
-      </div>
 
-      <ol aria-label="Move list" className="overflow-y-auto flex-1 min-h-0 text-sm list-none m-0 p-0">
+      {/* Opening name — italic, secondary color, 12px */}
+      {openingName && (
+        <div
+          className="shrink-0 px-3 py-2"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              fontStyle: 'italic',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.4,
+            }}
+          >
+            {openingName}
+          </span>
+        </div>
+      )}
+
+      {/* Move rows */}
+      <ol aria-label="Move list" className="move-list overflow-y-auto flex-1 min-h-0 list-none m-0 p-0">
         {pairs.map(([white, wi, black, bi]) => {
           const wClass  = classifyPly(evals, wi, 'w');
           const bClass  = black ? classifyPly(evals, bi, 'b') : undefined;
           const wActive = currentPly === wi + 1;
           const bActive = currentPly === bi + 1;
-          const wScore  = evals[wi + 1];
-          const bScore  = black ? evals[bi + 1] : null;
 
           return (
-            <li key={wi}>
-              {/* Move row */}
-              <div className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800/50">
-                {/* Move number */}
-                <span className="w-7 text-gray-500 text-xs shrink-0 tabular-nums" aria-hidden="true">
-                  {white.moveNumber}.
-                </span>
+            <li
+              key={wi}
+              className="flex items-stretch"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+            >
+              {/* Move number */}
+              <span
+                aria-hidden="true"
+                className="flex items-center shrink-0 select-none tabular-nums"
+                style={{
+                  width: 32,
+                  paddingLeft: 8,
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {white.moveNumber}.
+              </span>
 
-                {/* White move */}
-                <div className="flex items-center flex-1 min-w-0 gap-1">
-                  <button
-                    ref={wActive ? activeRef : undefined}
-                    onClick={() => onJump(wi + 1)}
-                    aria-label={`Move ${white.moveNumber} white: ${white.san}${wClass.classification ? `, ${wClass.classification}` : ''}`}
-                    aria-current={wActive ? 'true' : undefined}
-                    className={[
-                      'flex items-center gap-1 px-1.5 py-0.5 rounded text-left transition-colors flex-1 min-w-0',
-                      wActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
-                    ].join(' ')}
-                  >
-                    <span className="font-medium truncate">{white.san}</span>
-                    <ClassBadge c={wClass.classification} />
-                  </button>
-
-                  {/* Ask Coach button for white blunder/mistake */}
-                  {wClass.classification && (
-                    loadingExplainPly === wi ? (
-                      <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0 px-1">
-                        <span className="w-3 h-3 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                        <span className="hidden xl:inline">Thinking…</span>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => onExplain(wi)}
-                        disabled={isExplaining}
-                        aria-label={`Ask AI coach to explain this ${wClass.classification}`}
-                        title="Ask AI coach"
-                        className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-amber-600/50 text-amber-500 hover:bg-amber-900/30 text-xs transition-colors disabled:opacity-30"
-                      >
-                        <GraduationCap className="w-3 h-3" />
-                        <span className="hidden xl:inline">Ask</span>
-                      </button>
-                    )
-                  )}
-
-                  <span className="text-xs text-gray-500 tabular-nums w-14 text-right shrink-0">
-                    {wScore ? formatScore(wScore.normalizedScore) : ''}
+              {/* ── White half ── */}
+              <div className="flex items-center flex-1 min-w-0">
+                <button
+                  ref={wActive ? activeRef : undefined}
+                  onClick={() => onJump(wi + 1)}
+                  aria-label={`Move ${white.moveNumber} white: ${white.san}${wClass.classification ? `, ${wClass.classification}` : ''}`}
+                  aria-current={wActive ? 'true' : undefined}
+                  className="move-btn"
+                  style={moveBtnStyle(wActive)}
+                >
+                  {wClass.classification && <ClassBadge c={wClass.classification} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {white.san}
                   </span>
-                </div>
+                </button>
 
-                {/* Black move */}
+                {/* Ask Coach — white classified moves only */}
+                {wClass.classification && (
+                  loadingExplainPly === wi ? (
+                    <span
+                      className="w-3 h-3 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0 mr-1"
+                      aria-label="Coach thinking…"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => onExplain(wi)}
+                      disabled={isExplaining}
+                      aria-label={`Ask AI coach to explain this ${wClass.classification}`}
+                      title="Ask AI coach"
+                      className="shrink-0 p-1 rounded transition-colors disabled:opacity-30"
+                      style={{
+                        color: explanations[wi] !== undefined
+                          ? 'var(--move-inaccuracy)'
+                          : 'var(--text-secondary)',
+                        opacity: isExplaining && loadingExplainPly !== wi ? 0.4 : 1,
+                      }}
+                    >
+                      <GraduationCap className="w-3 h-3" />
+                    </button>
+                  )
+                )}
+              </div>
+
+              {/* ── Black half ── */}
+              <div className="flex items-center flex-1 min-w-0">
                 {black ? (
-                  <div className="flex items-center flex-1 min-w-0 gap-1">
+                  <>
                     <button
                       ref={bActive ? activeRef : undefined}
                       onClick={() => onJump(bi + 1)}
                       aria-label={`Move ${black.moveNumber} black: ${black.san}${bClass?.classification ? `, ${bClass.classification}` : ''}`}
                       aria-current={bActive ? 'true' : undefined}
-                      className={[
-                        'flex items-center gap-1 px-1.5 py-0.5 rounded text-left transition-colors flex-1 min-w-0',
-                        bActive ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700',
-                      ].join(' ')}
+                      className="move-btn"
+                      style={moveBtnStyle(bActive)}
                     >
-                      <span className="font-medium truncate">{black.san}</span>
-                      <ClassBadge c={bClass?.classification} />
+                      {bClass?.classification && <ClassBadge c={bClass.classification} />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {black.san}
+                      </span>
                     </button>
 
-                    {/* Ask Coach button for black blunder/mistake */}
+                    {/* Ask Coach — black classified moves only */}
                     {bClass?.classification && (
                       loadingExplainPly === bi ? (
-                        <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0 px-1">
-                          <span className="w-3 h-3 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                          <span className="hidden xl:inline">Thinking…</span>
-                        </span>
+                        <span
+                          className="w-3 h-3 border border-amber-400 border-t-transparent rounded-full animate-spin shrink-0 mr-1"
+                          aria-label="Coach thinking…"
+                        />
                       ) : (
                         <button
                           onClick={() => onExplain(bi)}
                           disabled={isExplaining}
                           aria-label={`Ask AI coach to explain this ${bClass.classification}`}
                           title="Ask AI coach"
-                          className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-amber-600/50 text-amber-500 hover:bg-amber-900/30 text-xs transition-colors disabled:opacity-30"
+                          className="shrink-0 p-1 rounded transition-colors disabled:opacity-30"
+                          style={{
+                            color: explanations[bi] !== undefined
+                              ? 'var(--move-inaccuracy)'
+                              : 'var(--text-secondary)',
+                            opacity: isExplaining && loadingExplainPly !== bi ? 0.4 : 1,
+                          }}
                         >
                           <GraduationCap className="w-3 h-3" />
-                          <span className="hidden xl:inline">Ask</span>
                         </button>
                       )
                     )}
-
-                    <span className="text-xs text-gray-500 tabular-nums w-14 text-right shrink-0">
-                      {bScore ? formatScore(bScore.normalizedScore) : ''}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex-1" />
-                )}
+                  </>
+                ) : null}
               </div>
-
             </li>
           );
         })}
@@ -404,70 +556,609 @@ function MoveTable({
   );
 }
 
-// ── Summary panel ─────────────────────────────────────────────────────────────
+// ── Accuracy panel ────────────────────────────────────────────────────────────
 
-interface SummaryPanelProps {
-  plies:  Ply[];
-  evals:  (PlyEval | null)[];
-  onJump: (idx: number) => void;
+// Maps centipawn loss to per-move accuracy % (Lichess formula).
+function movePctAccuracy(cpLoss: number): number {
+  return Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * Math.max(0, cpLoss)) - 3.1668));
 }
 
-function SummaryPanel({ plies, evals, onJump }: SummaryPanelProps) {
-  const summary = useMemo(() => {
-    let wBlunders = 0, wMistakes = 0, bBlunders = 0, bMistakes = 0;
-    let worstIdx  = -1, worstDrop = 0;
+function accuracyColor(acc: number): string {
+  if (acc >= 85) return 'var(--brand-green)';
+  if (acc >= 70) return 'var(--move-inaccuracy)';
+  return 'var(--move-blunder)';
+}
 
-    for (let i = 0; i < plies.length; i++) {
-      const { classification, scoreDrop } = classifyPly(evals, i, plies[i].color);
-      if (!classification) continue;
-      if (plies[i].color === 'w') {
-        if (classification === 'blunder') wBlunders++;
-        else wMistakes++;
-      } else {
-        if (classification === 'blunder') bBlunders++;
-        else bMistakes++;
-      }
-      if (scoreDrop > worstDrop) { worstDrop = scoreDrop; worstIdx = i; }
+interface PlayerSummary {
+  accuracy:    number | null;
+  best:        number;
+  inaccuracies: number;
+  mistakes:    number;
+  blunders:    number;
+}
+
+function buildPlayerSummary(
+  color: 'w' | 'b',
+  plies: Ply[],
+  evals: (PlyEval | null)[],
+): PlayerSummary {
+  let best = 0, inaccuracies = 0, mistakes = 0, blunders = 0;
+  const accuracies: number[] = [];
+
+  for (let i = 0; i < plies.length; i++) {
+    if (plies[i].color !== color) continue;
+    const { classification, scoreDrop } = classifyPly(evals, i, color);
+    if      (classification === 'blunder')    blunders++;
+    else if (classification === 'mistake')    mistakes++;
+    else if (classification === 'inaccuracy') inaccuracies++;
+    else                                      best++;
+    if (evals[i] !== null && evals[i + 1] !== null) {
+      accuracies.push(movePctAccuracy(Math.max(0, scoreDrop)));
     }
-    return { wBlunders, wMistakes, bBlunders, bMistakes, worstIdx, worstDrop };
-  }, [plies, evals]);
+  }
 
-  const { wBlunders, wMistakes, bBlunders, bMistakes, worstIdx, worstDrop } = summary;
-  const worstPly = worstIdx >= 0 ? plies[worstIdx] : null;
+  const accuracy = accuracies.length > 0
+    ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
+    : null;
+
+  return { accuracy, best, inaccuracies, mistakes, blunders };
+}
+
+// Radial SVG ring showing accuracy percentage
+function AccuracyRing({ accuracy }: { accuracy: number | null }) {
+  const SIZE  = 48;
+  const R     = 19;
+  const CIRC  = 2 * Math.PI * R;
+  const color = accuracy !== null ? accuracyColor(accuracy) : 'var(--bg-surface)';
+  const dash  = accuracy !== null ? CIRC * (accuracy / 100) : 0;
 
   return (
-    <section aria-label="Analysis summary" className="border-t border-gray-700 pt-3 mt-2 text-xs text-gray-400 flex flex-col gap-2 shrink-0">
-      <p className="text-gray-300 font-semibold text-sm">Analysis Summary</p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-        <dt>White blunders ??</dt>
-        <dd className="text-red-400 font-bold">{wBlunders}</dd>
-        <dt>White mistakes ?</dt>
-        <dd className="text-orange-400 font-bold">{wMistakes}</dd>
-        <dt>Black blunders ??</dt>
-        <dd className="text-red-400 font-bold">{bBlunders}</dd>
-        <dt>Black mistakes ?</dt>
-        <dd className="text-orange-400 font-bold">{bMistakes}</dd>
-      </dl>
-      {worstPly && (
-        <div className="bg-red-900/30 border border-red-800/50 rounded p-2 flex items-center justify-between gap-2">
-          <div>
-            <p className="text-red-300 font-semibold">Worst blunder ??</p>
-            <p className="text-gray-400">
-              Move {worstPly.moveNumber}{worstPly.color === 'b' ? '…' : '.'}{' '}
-              <span className="text-white font-mono">{worstPly.san}</span>
-              {' '}(−{(worstDrop / 100).toFixed(2)})
-            </p>
+    <div style={{ position: 'relative', width: SIZE, height: SIZE, flexShrink: 0 }}>
+      <svg
+        width={SIZE}
+        height={SIZE}
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        style={{ transform: 'rotate(-90deg)', display: 'block' }}
+        aria-hidden="true"
+      >
+        {/* Track */}
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="var(--bg-surface)" strokeWidth={4} />
+        {/* Progress arc */}
+        {accuracy !== null && (
+          <circle
+            cx={SIZE / 2} cy={SIZE / 2} r={R}
+            fill="none"
+            stroke={color}
+            strokeWidth={4}
+            strokeDasharray={`${dash} ${CIRC - dash}`}
+            strokeLinecap="round"
+          />
+        )}
+      </svg>
+      {/* Centered label */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 0,
+        }}
+      >
+        {accuracy !== null ? (
+          <>
+            <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1, color }}>
+              {accuracy.toFixed(1)}
+            </span>
+            <span style={{ fontSize: 8, color: 'var(--text-secondary)', lineHeight: 1.2 }}>%</span>
+          </>
+        ) : (
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const PILL_META = [
+  { key: 'best'        as const, symbol: '✓',  label: 'Best',       color: 'var(--move-best)',       bg: 'rgba(106,170,100,0.22)' },
+  { key: 'inaccuracies'as const, symbol: '?!', label: 'Inaccuracy', color: 'var(--move-inaccuracy)', bg: 'rgba(246,198,64,0.22)'  },
+  { key: 'mistakes'    as const, symbol: '?',  label: 'Mistake',    color: 'var(--move-mistake)',    bg: 'rgba(229,140,42,0.22)'  },
+  { key: 'blunders'    as const, symbol: '??', label: 'Blunder',    color: 'var(--move-blunder)',    bg: 'rgba(204,50,50,0.22)'   },
+];
+
+function PlayerAccuracyRow({
+  name, rating, isUser, summary,
+}: {
+  name: string; rating: number; isUser: boolean; summary: PlayerSummary;
+}) {
+  const counts = {
+    best:         summary.best,
+    inaccuracies: summary.inaccuracies,
+    mistakes:     summary.mistakes,
+    blunders:     summary.blunders,
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* Avatar + name + ring */}
+      <div className="flex items-center gap-2.5">
+        <div
+          aria-hidden="true"
+          style={{
+            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)',
+          }}
+        >
+          {name.charAt(0).toUpperCase()}
+        </div>
+
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="truncate"
+              style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}
+            >
+              {name}
+            </span>
+            {isUser && (
+              <span
+                style={{
+                  fontSize: 9, fontWeight: 700, flexShrink: 0,
+                  backgroundColor: 'var(--brand-green)', color: '#fff',
+                  borderRadius: 3, padding: '1px 4px',
+                }}
+              >
+                You
+              </span>
+            )}
           </div>
-          <button
-            onClick={() => onJump(worstIdx + 1)}
-            aria-label={`Jump to worst blunder: move ${worstPly.moveNumber} ${worstPly.san}`}
-            className="px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-xs whitespace-nowrap transition-colors"
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{rating}</span>
+        </div>
+
+        <AccuracyRing accuracy={summary.accuracy} />
+      </div>
+
+      {/* Classification pills — only non-zero counts */}
+      <div className="flex flex-wrap gap-1" style={{ paddingLeft: 42 }}>
+        {PILL_META.map(({ key, symbol, label, color, bg }) => {
+          const count = counts[key];
+          if (count === 0) return null;
+          return (
+            <span
+              key={key}
+              title={label}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                padding: '2px 6px', borderRadius: 12,
+                backgroundColor: bg,
+                fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+                fontFamily: '"Roboto Mono", monospace',
+                color,
+              }}
+            >
+              {count} {symbol}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface AccuracyPanelProps {
+  plies:    Ply[];
+  evals:    (PlyEval | null)[];
+  white:    { name: string; rating: number };
+  black:    { name: string; rating: number };
+  username: string;
+}
+
+function AccuracyPanel({ plies, evals, white, black, username }: AccuracyPanelProps) {
+  const whiteSummary = useMemo(() => buildPlayerSummary('w', plies, evals), [plies, evals]);
+  const blackSummary = useMemo(() => buildPlayerSummary('b', plies, evals), [plies, evals]);
+
+  return (
+    <section
+      aria-label="Game accuracy summary"
+      className="shrink-0"
+      style={{
+        padding: '12px 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <div className="flex flex-col gap-3">
+        <PlayerAccuracyRow
+          name={white.name}
+          rating={white.rating}
+          isUser={username.toLowerCase() === white.name.toLowerCase()}
+          summary={whiteSummary}
+        />
+        <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.05)' }} />
+        <PlayerAccuracyRow
+          name={black.name}
+          rating={black.rating}
+          isUser={username.toLowerCase() === black.name.toLowerCase()}
+          summary={blackSummary}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ── Eval graph ───────────────────────────────────────────────────────────────
+
+const GVW  = 1000;  // SVG viewBox width  (unitless, scales to container)
+const GVH  = 80;    // SVG viewBox height (plot area)
+const ZERO_Y = GVH / 2;
+const PAD_T  = 3;   // top padding so the +10 line isn't flush with the edge
+
+function gScoreToY(score: number): number {
+  const s = Math.max(-1000, Math.min(1000, score));
+  return ZERO_Y - (s / 1000) * (ZERO_Y - PAD_T);
+}
+
+interface EvalGraphProps {
+  evals:      (PlyEval | null)[];
+  plies:      Ply[];
+  currentPly: number;
+  onJump:     (ply: number) => void;
+}
+
+function EvalGraph({ evals, plies, currentPly, onJump }: EvalGraphProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverPly, setHoverPly] = useState<number | null>(null);
+
+  const n            = evals.length;
+  const lastAnalyzed = evals.reduce<number>((acc, e, i) => (e !== null ? i : acc), -1);
+
+  // Need at least 2 points to draw anything meaningful
+  if (n < 2 || lastAnalyzed < 1) return null;
+
+  const plyToX = (i: number): number => (i / (n - 1)) * GVW;
+
+  // Build SVG paths through analyzed positions only.
+  // Null evals (rare engine failures mid-game) produce a gap in the line.
+  let lineD = '';
+  let areaD = '';
+  for (let i = 0; i <= lastAnalyzed; i++) {
+    const e = evals[i];
+    const x = plyToX(i);
+    const y = e !== null ? gScoreToY(e.normalizedScore) : ZERO_Y;
+    if (i === 0) {
+      lineD = `M ${x},${y}`;
+      areaD = `M ${x},${ZERO_Y} L ${x},${y}`;
+    } else {
+      lineD += ` L ${x},${y}`;
+      areaD += ` L ${x},${y}`;
+    }
+  }
+  areaD += ` L ${plyToX(lastAnalyzed)},${ZERO_Y} Z`;
+
+  // Blunder / mistake dots on the graph line
+  const markers: { x: number; y: number; color: string; key: number }[] = [];
+  for (let i = 0; i < plies.length && i < lastAnalyzed; i++) {
+    const e = evals[i + 1];
+    if (!e) continue;
+    const { classification } = classifyPly(evals, i, plies[i].color);
+    if (!classification || classification === 'inaccuracy') continue;
+    markers.push({
+      x: plyToX(i + 1),
+      y: gScoreToY(e.normalizedScore),
+      color: CLASS_META[classification].color,
+      key: i,
+    });
+  }
+
+  // X-axis labels: every 10 plies = every 5 full moves
+  const xLabels: { pct: number; text: string }[] = [];
+  for (let ply = 10; ply < n; ply += 10) {
+    xLabels.push({ pct: ply / (n - 1), text: String(Math.round(ply / 2)) });
+  }
+
+  function getPlyFromEvent(e: React.MouseEvent): number {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    return Math.round(pct * (n - 1));
+  }
+
+  // Clamp hover ply to analyzed range so tooltip only appears over known data
+  const clampedHover = hoverPly !== null ? Math.min(hoverPly, lastAnalyzed) : null;
+  const hoverEval    = clampedHover !== null ? evals[clampedHover] : null;
+  const hoverSan     = clampedHover !== null && clampedHover > 0 ? plies[clampedHover - 1] : null;
+
+  const curY = evals[currentPly] !== null ? gScoreToY(evals[currentPly]!.normalizedScore) : ZERO_Y;
+  const curX = plyToX(currentPly);
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        borderRadius: 6,
+        backgroundColor: 'var(--bg-secondary)',
+        overflow: 'hidden',
+        marginTop: 8,
+      }}
+    >
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${GVW} ${GVH}`}
+        preserveAspectRatio="none"
+        style={{ display: 'block', width: '100%', height: 78, cursor: 'crosshair' }}
+        onMouseMove={e => setHoverPly(getPlyFromEvent(e))}
+        onMouseLeave={() => setHoverPly(null)}
+        onClick={e => onJump(getPlyFromEvent(e))}
+        aria-label="Evaluation graph"
+        role="img"
+      >
+        <defs>
+          <clipPath id="ecg-upper">
+            <rect x={0} y={0} width={GVW} height={ZERO_Y} />
+          </clipPath>
+          <clipPath id="ecg-lower">
+            <rect x={0} y={ZERO_Y} width={GVW} height={GVH - ZERO_Y} />
+          </clipPath>
+        </defs>
+
+        {/* Two-tone area fill: white = white advantage, dark = black advantage */}
+        <path d={areaD} fill="rgba(255,255,255,0.15)" clipPath="url(#ecg-upper)" />
+        <path d={areaD} fill="rgba(0,0,0,0.4)"        clipPath="url(#ecg-lower)" />
+
+        {/* Dashed zero line */}
+        <line
+          x1={0} y1={ZERO_Y} x2={GVW} y2={ZERO_Y}
+          stroke="rgba(255,255,255,0.18)" strokeWidth={0.8} strokeDasharray="3,3"
+        />
+
+        {/* Eval line */}
+        <path d={lineD} fill="none" stroke="#b0aca6" strokeWidth={1.5} />
+
+        {/* Hover vertical indicator */}
+        {clampedHover !== null && (
+          <line
+            x1={plyToX(clampedHover)} y1={0} x2={plyToX(clampedHover)} y2={GVH}
+            stroke="rgba(255,255,255,0.25)" strokeWidth={1}
+          />
+        )}
+
+        {/* Classification markers */}
+        {markers.map(m => (
+          <circle key={m.key} cx={m.x} cy={m.y} r={3.5} fill={m.color} />
+        ))}
+
+        {/* Current ply: vertical line + dot */}
+        <line
+          x1={curX} y1={0} x2={curX} y2={GVH}
+          stroke="rgba(255,255,255,0.45)" strokeWidth={1}
+        />
+        <circle cx={curX} cy={curY} r={3} fill="white" />
+      </svg>
+
+      {/* X-axis labels rendered as HTML so they aren't distorted by preserveAspectRatio="none" */}
+      <div
+        style={{
+          position: 'relative',
+          height: 14,
+          fontSize: 10,
+          color: 'var(--text-secondary)',
+          opacity: 0.6,
+        }}
+      >
+        {xLabels.map(({ pct, text }) => (
+          <span
+            key={text}
+            style={{
+              position: 'absolute',
+              left: `${pct * 100}%`,
+              transform: 'translateX(-50%)',
+              lineHeight: '14px',
+            }}
           >
-            Jump
-          </button>
+            {text}
+          </span>
+        ))}
+      </div>
+
+      {/* Hover tooltip */}
+      {clampedHover !== null && hoverEval !== null && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: `clamp(4px, calc(${(clampedHover / (n - 1)) * 100}% - 52px), calc(100% - 108px))`,
+            pointerEvents: 'none',
+            backgroundColor: 'var(--bg-tertiary)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 4,
+            padding: '2px 7px',
+            zIndex: 20,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--text-primary)',
+              fontFamily: '"Roboto Mono", monospace',
+            }}
+          >
+            {hoverSan
+              ? `${hoverSan.moveNumber}${hoverSan.color === 'b' ? '…' : '.'} ${hoverSan.san} `
+              : 'Start '}
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {formatEvalLabel(hoverEval.normalizedScore)}
+            </span>
+          </span>
         </div>
       )}
-    </section>
+    </div>
+  );
+}
+
+// ── Move feedback bubble ─────────────────────────────────────────────────────
+
+const FEEDBACK_TEXT: Record<Classification, string> = {
+  blunder:    'A serious mistake that significantly weakens the position.',
+  mistake:    'An imprecise move — a better option was available.',
+  inaccuracy: 'A slightly inaccurate choice.',
+};
+
+function MoveFeedback({
+  classification,
+  onBestMove,
+  onRetry,
+}: {
+  classification: Classification;
+  onBestMove:     () => void;
+  onRetry:        () => void;
+}) {
+  const { symbol, color, label } = CLASS_META[classification];
+  return (
+    <div
+      className="shrink-0"
+      style={{
+        margin: '0 12px 8px',
+        padding: '10px 12px',
+        borderRadius: 6,
+        backgroundColor: 'var(--bg-tertiary)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span style={{ fontFamily: '"Roboto Mono", monospace', fontWeight: 700, fontSize: 12, color }}>
+          {symbol}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 700, color }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 10 }}>
+        {FEEDBACK_TEXT[classification]}
+      </p>
+      <div className="flex gap-2">
+        <button className="btn-primary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={onBestMove}>
+          Best Move
+        </button>
+        <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={onRetry}>
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Engine lines ─────────────────────────────────────────────────────────────
+
+interface EngineLinesProps {
+  plyEval:    PlyEval | null;
+  isAnalyzed: boolean;
+  expanded:   boolean;
+  onToggle:   () => void;
+}
+
+function EngineLines({ plyEval, isAnalyzed, expanded, onToggle }: EngineLinesProps) {
+  const score        = plyEval?.normalizedScore;
+  const pvSan        = plyEval?.pvSan ?? [];
+  const bestMove     = pvSan[0] ?? null;
+  const continuation = pvSan.slice(1, 6);
+
+  const scoreColor =
+    score === undefined  ? 'var(--text-secondary)'
+    : score > 50  ? 'var(--move-best)'
+    : score < -50 ? 'var(--move-blunder)'
+    : 'var(--text-secondary)';
+
+  return (
+    <div
+      className="shrink-0"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      {/* Section header */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          Engine
+        </span>
+        <button
+          onClick={onToggle}
+          aria-label={expanded ? 'Collapse engine lines' : 'Expand engine lines'}
+          aria-expanded={expanded}
+          className="text-xs transition-colors"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {expanded ? '▲' : '▼'}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="px-3 pb-3">
+          {!isAnalyzed || !plyEval ? (
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.5 }}>
+              {isAnalyzed ? 'No engine data.' : 'Analyzing…'}
+            </p>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2.5">
+                {/* Eval score */}
+                <span
+                  className="shrink-0 tabular-nums"
+                  style={{
+                    fontFamily: '"Roboto Mono", monospace',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: scoreColor,
+                    minWidth: 44,
+                  }}
+                >
+                  {score !== undefined ? formatEvalLabel(score) : '—'}
+                </span>
+
+                {/* PV: bold best move + muted continuation */}
+                <div
+                  style={{
+                    fontFamily: '"Roboto Mono", monospace',
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    wordBreak: 'break-word',
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
+                  {bestMove ? (
+                    <>
+                      <span style={{ fontWeight: 700, color: 'var(--text-accent)' }}>
+                        {bestMove}
+                      </span>
+                      {continuation.length > 0 && (
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          {' '}{continuation.join(' ')}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>—</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer: depth + engine name */}
+              <p style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.4, marginTop: 6 }}>
+                Depth: {DEPTH} · Stockfish 18
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -477,14 +1168,11 @@ function EmptyState({ engineError }: { engineError: string | null }) {
   return (
     <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center">
       <p className="text-4xl" aria-hidden="true">♟</p>
-      <p className="text-gray-300 font-semibold text-lg">No games loaded</p>
-      <p className="text-gray-500 text-sm max-w-xs">
+      <p className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>No games loaded</p>
+      <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
         Fetch your Chess.com games on the Home page first, then come back here to analyse them.
       </p>
-      <Link
-        to="/"
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
-      >
+      <Link to="/" className="btn-primary text-sm">
         Go to Home
       </Link>
       {engineError && (
@@ -512,18 +1200,19 @@ export default function Analyzer() {
   const [analysisTotal,        setAnalysisTotal]        = useState(0);
   const [engineError,          setEngineError]          = useState<string | null>(null);
   const [leftOpen,             setLeftOpen]             = useState(true);
-  const [rightWidth,           setRightWidth]           = useState(RIGHT_DEFAULT);
+  const [flipped,              setFlipped]              = useState(false);
+  const [opening,              setOpening]              = useState<string | null>(null);
   const [boardTheme,           setBoardTheme]           = useState<BoardTheme>(loadSavedTheme);
   const [themePickerOpen,      setThemePickerOpen]      = useState(false);
   const [explanations,         setExplanations]         = useState<Record<number, string>>({});
   const [loadingExplainPly,    setLoadingExplainPly]    = useState<number | null>(null);
   const [activeExplanationPly, setActiveExplanationPly] = useState<number | null>(null);
+  const [showEngineLines,      setShowEngineLines]      = useState(true);
+  const [showBestMoveFor,      setShowBestMoveFor]      = useState<number | null>(null);
+  const [rightTab,             setRightTab]             = useState<'review' | 'analysis' | 'explore'>('review');
 
-  const cancelRef       = useRef(0);
-  const isDraggingRef   = useRef(false);
-  const dragStartXRef   = useRef(0);
-  const dragStartWRef   = useRef(0);
-  const themePickerRef  = useRef<HTMLDivElement>(null);
+  const cancelRef      = useRef(0);
+  const themePickerRef = useRef<HTMLDivElement>(null);
 
   // Pre-warm engine
   useEffect(() => {
@@ -543,38 +1232,6 @@ export default function Analyzer() {
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  // ── Right-panel drag-to-resize ──────────────────────────────────────────────
-
-  function startDrag(e: React.MouseEvent) {
-    isDraggingRef.current  = true;
-    dragStartXRef.current  = e.clientX;
-    dragStartWRef.current  = rightWidth;
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor     = 'ew-resize';
-    e.preventDefault();
-  }
-
-  useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
-      if (!isDraggingRef.current) return;
-      const delta    = dragStartXRef.current - e.clientX;
-      const newWidth = Math.min(RIGHT_MAX_WIDTH, Math.max(RIGHT_MIN_WIDTH, dragStartWRef.current + delta));
-      setRightWidth(newWidth);
-    }
-    function onMouseUp() {
-      if (!isDraggingRef.current) return;
-      isDraggingRef.current          = false;
-      document.body.style.userSelect = '';
-      document.body.style.cursor     = '';
-    }
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup',   onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup',   onMouseUp);
-    };
-  }, []);
-
   // ── Game selection ──────────────────────────────────────────────────────────
 
   const handleSelectGame = useCallback(
@@ -583,10 +1240,11 @@ export default function Analyzer() {
       selectGame(game);
 
       const token = ++cancelRef.current;
-      const { plies: newPlies, fens: newFens } = parsePlies(game.pgn);
+      const { plies: newPlies, fens: newFens, opening: newOpening } = parsePlies(game.pgn);
 
       setPlies(newPlies);
       setFens(newFens);
+      setOpening(newOpening);
       setEvals(new Array(newFens.length).fill(null));
       setCurrentPly(0);
       setIsAnalyzing(true);
@@ -603,7 +1261,20 @@ export default function Analyzer() {
         try {
           const result = await evaluatePosition(newFens[i], DEPTH);
           if (cancelRef.current !== token) return;
-          acc[i] = { normalizedScore: result.score, bestMove: result.bestMove };
+
+          // Convert UCI pv moves to SAN for display
+          const pvSan: string[] = [];
+          try {
+            const pvChess = new Chess();
+            pvChess.load(newFens[i]);
+            for (const uci of result.pv.slice(0, 7)) {
+              const m = pvChess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? undefined });
+              if (!m) break;
+              pvSan.push(m.san);
+            }
+          } catch { /* leave pvSan empty */ }
+
+          acc[i] = { normalizedScore: result.score, bestMove: result.bestMove, pvSan };
           setEvals([...acc]);
           setAnalysisDone(i + 1);
         } catch (err) {
@@ -695,34 +1366,68 @@ export default function Analyzer() {
   const currentEval     = evals[currentPly];
   const analysisComplete = !isAnalyzing && plies.length > 0;
 
-  // Show best-move arrow when explanation is open AND board is at that position
+  // Yellow highlight on the from/to squares of the last played move
+  const lastMoveSquares = useMemo((): [string, string] | null => {
+    if (currentPly === 0) return null;
+    const ply = plies[currentPly - 1];
+    return ply ? [ply.from, ply.to] : null;
+  }, [currentPly, plies]);
+
+  // Classification badge on the destination square of the last played move
+  const classificationBadge = useMemo(() => {
+    if (currentPly === 0) return null;
+    const ply = plies[currentPly - 1];
+    if (!ply) return null;
+    const { classification } = classifyPly(evals, currentPly - 1, ply.color);
+    if (!classification) return null;
+    return { square: ply.to, classification };
+  }, [currentPly, plies, evals]);
+
+  // Show best-move arrow when explanation is active OR "Best Move" button was pressed
   const bestMoveArrow = useMemo(() => {
-    if (activeExplanationPly === null || currentPly !== activeExplanationPly) return null;
-    const uci = evals[activeExplanationPly]?.bestMove;
+    const plyForArrow = activeExplanationPly ?? showBestMoveFor;
+    if (plyForArrow === null || currentPly !== plyForArrow) return null;
+    const uci = evals[plyForArrow]?.bestMove;
     if (!uci || uci.length < 4) return null;
     return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
-  }, [activeExplanationPly, currentPly, evals]);
+  }, [activeExplanationPly, showBestMoveFor, currentPly, evals]);
 
   if (games.length === 0) {
     return <EmptyState engineError={engineError} />;
   }
 
+  // Board area max-width: never wider than the center column, never taller than
+  // the viewport minus the nav bar (52px), nameplates (~80px), controls (~48px),
+  // and padding (~40px).
+  const boardAreaMaxWidth = 'min(100%, calc(100vh - 220px))';
+
   return (
-    <div className="flex h-[calc(100vh-52px)] overflow-hidden">
+    <div
+      className="flex h-[calc(100vh-52px)] overflow-hidden"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
 
       {/* ── Left: game list (collapsible) ───────────────────────────────── */}
       {leftOpen ? (
         <aside
           aria-label="Game list"
-          className="w-72 shrink-0 border-r border-gray-800 flex flex-col p-3 overflow-hidden"
+          className="shrink-0 flex flex-col p-3 overflow-hidden"
+          style={{
+            width: 288,
+            backgroundColor: 'var(--bg-secondary)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+          }}
         >
           <div className="flex items-center justify-between mb-2 shrink-0">
-            <h2 className="text-sm font-semibold text-gray-300">Games</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+              Games
+            </h2>
             <button
               onClick={() => setLeftOpen(false)}
               aria-label="Collapse game list"
               title="Collapse game list"
-              className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700 transition-colors"
+              className="p-1 rounded text-sm transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
             >
               ◀
             </button>
@@ -739,12 +1444,20 @@ export default function Analyzer() {
           />
         </aside>
       ) : (
-        <div className="shrink-0 border-r border-gray-800 flex flex-col items-center pt-2 bg-gray-900 w-8">
+        <div
+          className="shrink-0 flex flex-col items-center pt-2"
+          style={{
+            width: 32,
+            backgroundColor: 'var(--bg-secondary)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
           <button
             onClick={() => setLeftOpen(true)}
             aria-label="Expand game list"
             title="Expand game list"
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700 transition-colors text-xs"
+            className="p-1 rounded text-xs transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
           >
             ▶
           </button>
@@ -754,210 +1467,346 @@ export default function Analyzer() {
       {/* ── Center: board ───────────────────────────────────────────────── */}
       <main
         aria-label="Chess board and controls"
-        className="flex flex-col items-center justify-start gap-3 p-4 overflow-y-auto flex-1 min-w-0"
+        className="flex flex-col items-center justify-start gap-2 p-4 overflow-y-auto flex-1 min-w-0"
+        style={{ backgroundColor: 'var(--bg-primary)' }}
       >
-        {/* Theme picker */}
-        <div style={{ width: 'min(100%, calc(100vh - 240px))' }} className="flex justify-end">
-          <div className="relative" ref={themePickerRef}>
-            <button
-              onClick={() => setThemePickerOpen(o => !o)}
-              aria-label="Change board theme"
-              title="Board theme"
-              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-200 hover:bg-gray-800 transition-colors"
-            >
-              <Palette className="w-3.5 h-3.5" />
-              <span>Theme</span>
-            </button>
+        {/* Everything in the center is constrained to a max-width so the board
+            never overflows the available height */}
+        <div className="flex flex-col w-full mx-auto" style={{ maxWidth: boardAreaMaxWidth }}>
 
-            {themePickerOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-3 w-56">
-                <p className="text-xs font-semibold text-gray-400 mb-2.5 px-0.5">Board color</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {BOARD_THEMES.map(theme => (
-                    <button
-                      key={theme.id}
-                      onClick={() => {
-                        setBoardTheme(theme);
-                        localStorage.setItem('chessboard-theme', theme.id);
-                        setThemePickerOpen(false);
-                      }}
-                      aria-label={theme.name}
-                      title={theme.name}
-                      className={[
-                        'flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors',
-                        boardTheme.id === theme.id
-                          ? 'ring-2 ring-blue-500 bg-gray-800'
-                          : 'hover:bg-gray-800',
-                      ].join(' ')}
-                    >
-                      {/* 2×2 mini board swatch */}
-                      <div className="grid grid-cols-2 w-8 h-8 rounded-sm overflow-hidden border border-gray-700">
-                        <div style={{ backgroundColor: theme.light }} />
-                        <div style={{ backgroundColor: theme.dark }} />
-                        <div style={{ backgroundColor: theme.dark }} />
-                        <div style={{ backgroundColor: theme.light }} />
-                      </div>
-                      <span className="text-gray-400 text-xs leading-tight text-center">{theme.name}</span>
-                    </button>
-                  ))}
+          {/* Theme picker — tucked to the top-right of the board area */}
+          <div className="flex justify-end mb-1">
+            <div className="relative" ref={themePickerRef}>
+              <button
+                onClick={() => setThemePickerOpen(o => !o)}
+                aria-label="Change board theme"
+                title="Board theme"
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>Theme</span>
+              </button>
+
+              {themePickerOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-2xl p-3 w-56"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <p className="text-xs font-semibold mb-2.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    Board color
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {BOARD_THEMES.map(theme => (
+                      <button
+                        key={theme.id}
+                        onClick={() => {
+                          setBoardTheme(theme);
+                          localStorage.setItem('chessboard-theme', theme.id);
+                          setThemePickerOpen(false);
+                        }}
+                        aria-label={theme.name}
+                        title={theme.name}
+                        className={[
+                          'flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors',
+                          boardTheme.id === theme.id ? 'ring-2 ring-[var(--brand-green)]' : '',
+                        ].join(' ')}
+                        style={{
+                          backgroundColor: boardTheme.id === theme.id
+                            ? 'var(--bg-surface)'
+                            : 'transparent',
+                        }}
+                      >
+                        <div className="grid grid-cols-2 w-8 h-8 rounded-sm overflow-hidden"
+                          style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div style={{ backgroundColor: theme.light }} />
+                          <div style={{ backgroundColor: theme.dark }} />
+                          <div style={{ backgroundColor: theme.dark }} />
+                          <div style={{ backgroundColor: theme.light }} />
+                        </div>
+                        <span className="text-xs leading-tight text-center" style={{ color: 'var(--text-secondary)' }}>
+                          {theme.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Eval bar */}
-        <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
-          <div className="flex justify-between text-xs text-gray-500 mb-1" aria-hidden="true">
-            <span>Black</span>
-            {currentEval && (
-              <span className={currentEval.normalizedScore >= 0 ? 'text-white' : 'text-gray-300'}>
-                {formatScore(currentEval.normalizedScore)}
-              </span>
-            )}
-            <span>White</span>
-          </div>
-          <EvalBar score={currentEval?.normalizedScore} />
-        </div>
-
-        {/* Black nameplate */}
-        {selectedGame && (
-          <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
+          {/* Black nameplate */}
+          {selectedGame && (
             <PlayerNameplate
               name={selectedGame.black}
               rating={selectedGame.blackRating}
               color="black"
               isUser={username.toLowerCase() === selectedGame.black.toLowerCase()}
             />
+          )}
+
+          {/* Eval bar (vertical, 20px) + Board side by side */}
+          <div className="flex items-stretch gap-1.5">
+            <EvalBar score={currentEval?.normalizedScore} />
+            <div className="flex-1">
+              <ChessBoard
+                fen={currentFen}
+                bestMoveArrow={bestMoveArrow}
+                darkSquareStyle={{ backgroundColor: boardTheme.dark }}
+                lightSquareStyle={{ backgroundColor: boardTheme.light }}
+                boardOrientation={flipped ? 'black' : 'white'}
+                lastMoveSquares={lastMoveSquares}
+                classificationBadge={classificationBadge}
+              />
+            </div>
           </div>
-        )}
 
-        {/* Board */}
-        <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
-          <ChessBoard
-            fen={currentFen}
-            bestMoveArrow={bestMoveArrow}
-            darkSquareStyle={{ backgroundColor: boardTheme.dark }}
-            lightSquareStyle={{ backgroundColor: boardTheme.light }}
-          />
-        </div>
-
-        {/* White nameplate */}
-        {selectedGame && (
-          <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
+          {/* White nameplate */}
+          {selectedGame && (
             <PlayerNameplate
               name={selectedGame.white}
               rating={selectedGame.whiteRating}
               color="white"
               isUser={username.toLowerCase() === selectedGame.white.toLowerCase()}
             />
-          </div>
-        )}
-
-        {/* Navigation */}
-        <div role="group" aria-label="Move navigation" className="flex items-center gap-2">
-          {[
-            { label: '|◀', ariaLabel: 'Go to start',     key: 'start', action: () => goTo(0),               disabled: currentPly === 0 },
-            { label: '◀',  ariaLabel: 'Previous move',   key: 'prev',  action: () => goTo(currentPly - 1),  disabled: currentPly === 0 },
-            { label: '▶',  ariaLabel: 'Next move',       key: 'next',  action: () => goTo(currentPly + 1),  disabled: currentPly >= fens.length - 1 },
-            { label: '▶|', ariaLabel: 'Go to last move', key: 'end',   action: () => goTo(fens.length - 1), disabled: currentPly >= fens.length - 1 },
-          ].map(({ label, ariaLabel, key, action, disabled }) => (
-            <button
-              key={key}
-              onClick={action}
-              aria-label={ariaLabel}
-              disabled={plies.length === 0 || disabled}
-              className="w-9 h-9 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-gray-300 transition-colors text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <span aria-hidden="true">{label}</span>
-            </button>
-          ))}
-          {plies.length > 0 && (
-            <span className="text-xs text-gray-500 ml-1" aria-live="polite">
-              {currentPly}/{plies.length}
-            </span>
           )}
-        </div>
 
-        {/* AI Coach explanation panel */}
-        {(activeExplanationPly !== null || loadingExplainPly !== null) && (() => {
-          const plyIdx = activeExplanationPly ?? loadingExplainPly!;
-          const ply    = plies[plyIdx];
-          const cls    = classifyPly(evals, plyIdx, ply?.color ?? 'w').classification;
-          if (!ply || !cls) return null;
-          return (
-            <div style={{ width: 'min(100%, calc(100vh - 240px))' }}>
-              <ExplanationPanel
-                ply={ply}
-                classification={cls}
-                text={explanations[plyIdx] ?? null}
-                onDismiss={() => setActiveExplanationPly(null)}
-              />
-            </div>
-          );
-        })()}
-
-        {/* Analysis progress */}
-        {isAnalyzing && (
-          <div role="status" aria-live="polite" style={{ width: 'min(100%, calc(100vh - 240px))' }}>
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Analyzing move {analysisDone}/{analysisTotal}…</span>
-            </div>
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-200"
-                style={{ width: `${(analysisDone / analysisTotal) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {!selectedGame && (
-          <p className="text-gray-600 text-sm mt-4">Select a game from the list to begin analysis.</p>
-        )}
-      </main>
-
-      {/* ── Right: move list + summary (resizable) ──────────────────────── */}
-      {plies.length > 0 && (
-        <>
-          {/* Drag handle */}
+          {/* Navigation controls */}
           <div
-            onMouseDown={startDrag}
-            aria-hidden="true"
-            className="w-1.5 shrink-0 cursor-ew-resize bg-gray-800 hover:bg-blue-600 transition-colors"
-            title="Drag to resize"
-          />
-
-          <aside
-            aria-label="Move analysis panel"
-            style={{ width: rightWidth }}
-            className="shrink-0 flex flex-col p-3 overflow-hidden border-l border-gray-800"
+            role="group"
+            aria-label="Move navigation"
+            className="flex items-center justify-center gap-1 mt-1"
           >
-            <h2 className="text-sm font-semibold text-gray-300 mb-2 shrink-0">Moves</h2>
+            {/* Eval score — left of nav buttons */}
+            <span
+              className="text-xs tabular-nums font-mono mr-2"
+              style={{ color: 'var(--text-secondary)', minWidth: 48, textAlign: 'right' }}
+              aria-live="polite"
+            >
+              {currentEval ? formatScore(currentEval.normalizedScore) : ''}
+            </span>
 
-            <MoveTable
-              plies={plies}
-              evals={evals}
-              currentPly={currentPly}
-              onJump={goTo}
-              whiteName={selectedGame?.white}
-              blackName={selectedGame?.black}
-              username={username}
-              explanations={explanations}
-              loadingExplainPly={loadingExplainPly}
-              onExplain={handleExplain}
-            />
+            {[
+              { label: '⏮', ariaLabel: 'Go to start',     key: 'start', action: () => goTo(0),               disabled: currentPly === 0 },
+              { label: '◀', ariaLabel: 'Previous move',   key: 'prev',  action: () => goTo(currentPly - 1),  disabled: currentPly === 0 },
+              { label: '▶', ariaLabel: 'Next move',       key: 'next',  action: () => goTo(currentPly + 1),  disabled: currentPly >= fens.length - 1 },
+              { label: '⏭', ariaLabel: 'Go to last move', key: 'end',   action: () => goTo(fens.length - 1), disabled: currentPly >= fens.length - 1 },
+            ].map(({ label, ariaLabel, key, action, disabled }) => (
+              <button
+                key={key}
+                onClick={action}
+                aria-label={ariaLabel}
+                disabled={plies.length === 0 || disabled}
+                className="w-10 h-10 flex items-center justify-center text-base transition-colors disabled:opacity-30 focus:outline-none focus:ring-1 focus:ring-[var(--brand-green)] hover:bg-[var(--bg-tertiary)]"
+                style={{ borderRadius: 4, color: 'var(--text-secondary)' }}
+              >
+                <span aria-hidden="true">{label}</span>
+              </button>
+            ))}
 
-            {analysisComplete && (
-              <SummaryPanel plies={plies} evals={evals} onJump={goTo} />
+            {/* Move counter */}
+            {plies.length > 0 && (
+              <span
+                className="text-xs ml-2 tabular-nums"
+                style={{ color: 'var(--text-secondary)' }}
+                aria-live="polite"
+              >
+                {currentPly}/{plies.length}
+              </span>
             )}
 
-            {/* AI usage note */}
-            <p className="text-gray-600 text-xs mt-2 shrink-0">
-              AI explanations use the Gemini free tier (250 req/day).
+            {/* Flip board */}
+            <button
+              onClick={() => setFlipped(f => !f)}
+              aria-label={flipped ? 'Flip board to white' : 'Flip board to black'}
+              title="Flip board"
+              className="w-10 h-10 flex items-center justify-center text-base transition-colors hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-green)] ml-2"
+              style={{ borderRadius: 4, color: flipped ? 'var(--brand-green)' : 'var(--text-secondary)' }}
+            >
+              ↕
+            </button>
+          </div>
+
+          {/* Evaluation graph */}
+          {plies.length > 0 && (
+            <EvalGraph
+              evals={evals}
+              plies={plies}
+              currentPly={currentPly}
+              onJump={goTo}
+            />
+          )}
+
+          {/* Analysis progress bar */}
+          {isAnalyzing && (
+            <div role="status" aria-live="polite" className="mt-2">
+              <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                <span>Analyzing… {analysisDone}/{analysisTotal}</span>
+              </div>
+              <div
+                className="h-1 rounded-full overflow-hidden"
+                style={{ backgroundColor: 'var(--bg-surface)' }}
+              >
+                <div
+                  className="h-full transition-all duration-200"
+                  style={{
+                    width: `${(analysisDone / analysisTotal) * 100}%`,
+                    backgroundColor: 'var(--brand-green)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* AI Coach explanation panel */}
+          {(activeExplanationPly !== null || loadingExplainPly !== null) && (() => {
+            const plyIdx = activeExplanationPly ?? loadingExplainPly!;
+            const ply    = plies[plyIdx];
+            const cls    = classifyPly(evals, plyIdx, ply?.color ?? 'w').classification;
+            if (!ply || !cls) return null;
+            return (
+              <div className="mt-2">
+                <ExplanationPanel
+                  ply={ply}
+                  classification={cls}
+                  text={explanations[plyIdx] ?? null}
+                  onDismiss={() => setActiveExplanationPly(null)}
+                />
+              </div>
+            );
+          })()}
+
+          {!selectedGame && (
+            <p className="text-sm mt-4 text-center" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+              Select a game from the list to begin analysis.
             </p>
-          </aside>
-        </>
+          )}
+        </div>
+      </main>
+
+      {/* ── Right: tabs + content (fixed width) ────────────────────────── */}
+      {plies.length > 0 && (
+        <aside
+          aria-label="Move analysis panel"
+          className="shrink-0 flex flex-col overflow-hidden"
+          style={{
+            width: RIGHT_WIDTH,
+            backgroundColor: 'var(--bg-secondary)',
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          {/* Tab bar */}
+          <div
+            className="flex shrink-0"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {([
+              { key: 'review'   as const, label: 'Review'   },
+              { key: 'analysis' as const, label: 'Analysis' },
+              { key: 'explore'  as const, label: 'Explore'  },
+            ]).map(({ key, label }) => {
+              const active = rightTab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setRightTab(key)}
+                  style={{
+                    fontSize: 13,
+                    padding: '10px 16px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: `2px solid ${active ? 'var(--brand-green)' : 'transparent'}`,
+                    color: active ? 'var(--text-accent)' : 'var(--text-secondary)',
+                    fontWeight: active ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'color 0.15s ease',
+                    marginBottom: -1,
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab content — key forces fade-in animation on switch */}
+          <div key={rightTab} className="page-transition flex flex-col flex-1 min-h-0 overflow-hidden">
+
+            {/* ── Review ── */}
+            {rightTab === 'review' && (
+              <>
+                {analysisComplete && selectedGame && (
+                  <AccuracyPanel
+                    plies={plies}
+                    evals={evals}
+                    white={{ name: selectedGame.white, rating: selectedGame.whiteRating }}
+                    black={{ name: selectedGame.black, rating: selectedGame.blackRating }}
+                    username={username}
+                  />
+                )}
+
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                  <MoveTable
+                    plies={plies}
+                    evals={evals}
+                    currentPly={currentPly}
+                    onJump={goTo}
+                    openingName={opening}
+                    explanations={explanations}
+                    loadingExplainPly={loadingExplainPly}
+                    onExplain={handleExplain}
+                  />
+
+                  <EngineLines
+                    plyEval={currentEval ?? null}
+                    isAnalyzed={analysisComplete}
+                    expanded={showEngineLines}
+                    onToggle={() => setShowEngineLines(o => !o)}
+                  />
+
+                  {/* Move feedback — shown when a classified move is selected */}
+                  {classificationBadge && analysisComplete && (
+                    <MoveFeedback
+                      classification={classificationBadge.classification}
+                      onBestMove={() => {
+                        const prevPly = currentPly - 1;
+                        setShowBestMoveFor(prevPly);
+                        goTo(prevPly);
+                      }}
+                      onRetry={() => goTo(currentPly - 1)}
+                    />
+                  )}
+
+                  <p className="text-xs mt-2 mb-2 px-3 shrink-0" style={{ color: 'var(--text-secondary)', opacity: 0.45 }}>
+                    AI explanations use the Gemini free tier (250 req/day).
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* ── Analysis ── */}
+            {rightTab === 'analysis' && (
+              <div className="flex flex-col flex-1 items-center justify-center p-6 text-center">
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5 }}>
+                  Detailed analysis coming soon.
+                </p>
+              </div>
+            )}
+
+            {/* ── Explore ── */}
+            {rightTab === 'explore' && (
+              <div className="flex flex-col flex-1 items-center justify-center p-6 text-center">
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5 }}>
+                  Opening explorer coming soon.
+                </p>
+              </div>
+            )}
+
+          </div>
+        </aside>
       )}
     </div>
   );
