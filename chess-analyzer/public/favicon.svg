@@ -1,10 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#d4a062"/>
+      <stop offset="50%"  stop-color="#c68642"/>
+      <stop offset="100%" stop-color="#a0622a"/>
+    </linearGradient>
+  </defs>
   <!-- Head -->
-  <circle cx="16" cy="8.5" r="5.5" fill="#863bff"/>
+  <circle cx="16" cy="8.5" r="5.5" fill="url(#wood)"/>
   <!-- Neck + body taper -->
-  <path d="M12.5 13.5 C10.5 16 9.5 18.5 9.5 21 L22.5 21 C22.5 18.5 21.5 16 19.5 13.5 Z" fill="#863bff"/>
+  <path d="M12.5 13.5 C10.5 16 9.5 18.5 9.5 21 L22.5 21 C22.5 18.5 21.5 16 19.5 13.5 Z" fill="url(#wood)"/>
   <!-- Pedestal mid -->
-  <rect x="8" y="21" width="16" height="2.5" rx="1.25" fill="#863bff"/>
+  <rect x="8" y="21" width="16" height="2.5" rx="1.25" fill="url(#wood)"/>
   <!-- Base -->
-  <rect x="5.5" y="23.5" width="21" height="3" rx="1.5" fill="#863bff"/>
+  <rect x="5.5" y="23.5" width="21" height="3" rx="1.5" fill="url(#wood)"/>
 </svg>

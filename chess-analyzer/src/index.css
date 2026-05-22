@@ -7,11 +7,11 @@
    of truth.
 ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --bg-primary:   #1a1a1a;
-  --bg-secondary: #262421;
-  --bg-tertiary:  #302e2b;
-  --bg-surface:   #3d3a36;
+  /* Backgrounds — warm walnut wood */
+  --bg-primary:   #1c0f07;
+  --bg-secondary: #2e1a0e;
+  --bg-tertiary:  #3d2b1f;
+  --bg-surface:   #4e3829;
 
   /* Text */
   --text-primary:   #e8e6e3;
@@ -95,6 +95,21 @@
 /* ── Base styles ──────────────────────────────────────────────────────────── */
 body {
   background-color: var(--bg-primary);
+  background-image:
+    repeating-linear-gradient(
+      92deg,
+      rgba(255, 200, 120, 0.025) 0px,
+      rgba(255, 200, 120, 0.025) 1px,
+      transparent 1px,
+      transparent 18px
+    ),
+    repeating-linear-gradient(
+      178deg,
+      rgba(180, 100, 30, 0.03) 0px,
+      rgba(180, 100, 30, 0.03) 1px,
+      transparent 1px,
+      transparent 40px
+    );
   color: var(--text-primary);
   font-family: "Noto Sans", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
