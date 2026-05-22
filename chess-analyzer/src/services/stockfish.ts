@@ -2,6 +2,8 @@ export interface EvalResult {
   /** Centipawns from white's perspective. ±10 000 = forced mate. */
   score: number;
   bestMove: string;
+  /** Principal variation in UCI notation (empty if unavailable). */
+  pv: string[];
 }
 
 let worker: Worker | null = null;
@@ -69,6 +71,7 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
     }
     const w = worker;
     let lastScore = 0;
+    let lastPv: string[] = [];
 
     const handler = ({ data }: MessageEvent<string>) => {
       if (typeof data !== 'string') return;
@@ -82,10 +85,13 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
         lastScore = normalisedScore(n > 0 ? 10_000 : -10_000, fen);
       }
 
+      const pvMatch = data.match(/\bpv\s+(.+)/);
+      if (pvMatch) lastPv = pvMatch[1].trim().split(/\s+/);
+
       const bmMatch = data.match(/^bestmove\s+(\S+)/);
       if (bmMatch) {
         w.removeEventListener('message', handler);
-        resolve({ score: lastScore, bestMove: bmMatch[1] === '(none)' ? '' : bmMatch[1] });
+        resolve({ score: lastScore, bestMove: bmMatch[1] === '(none)' ? '' : bmMatch[1], pv: lastPv });
       }
     };
 
