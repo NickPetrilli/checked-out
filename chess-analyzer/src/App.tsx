@@ -12,8 +12,8 @@ function NavBar() {
   const navigate = useNavigate();
 
   const linkBase = 'px-3 py-1.5 rounded text-sm font-medium transition-colors';
-  const active   = `${linkBase} bg-blue-600 text-white`;
-  const inactive = `${linkBase} text-gray-300 hover:bg-gray-700 hover:text-white`;
+  const active   = `${linkBase} bg-brand-green text-white`;
+  const inactive = `${linkBase} text-text-secondary hover:bg-bg-tertiary hover:text-text-primary`;
 
   function handleReset() {
     clearGames();
@@ -23,7 +23,8 @@ function NavBar() {
   return (
     <nav
       aria-label="Main navigation"
-      className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-800 bg-gray-900 flex-wrap min-h-[52px]"
+      className="flex items-center gap-2 px-4 py-2.5 flex-wrap min-h-[52px]"
+      style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       {/* Logo */}
       <span className="mr-2 text-base font-bold text-white select-none" aria-hidden="true">
@@ -33,14 +34,20 @@ function NavBar() {
 
       {/* Loaded-user chip */}
       {username && (
-        <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm">
-          <span className="text-gray-300 font-medium">{username}</span>
-          <span className="text-gray-600">·</span>
-          <span className="text-gray-400 tabular-nums">{games.length} game{games.length !== 1 ? 's' : ''}</span>
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-1 text-sm"
+          style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{username}</span>
+          <span style={{ color: 'var(--text-secondary)', opacity: 0.4 }}>·</span>
+          <span className="tabular-nums" style={{ color: 'var(--text-secondary)' }}>{games.length} game{games.length !== 1 ? 's' : ''}</span>
           <button
             onClick={handleReset}
             aria-label="Reset — clear loaded games and return to Home"
-            className="ml-1 text-xs text-gray-500 hover:text-red-400 transition-colors"
+            className="ml-1 text-xs transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
           >
             ✕
           </button>
@@ -84,7 +91,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ChessGamesContext.Provider value={chessGames}>
-        <div className="min-h-screen bg-gray-950 flex flex-col text-gray-100">
+        <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
           <NavBar />
           <AnimatedRoutes />
         </div>

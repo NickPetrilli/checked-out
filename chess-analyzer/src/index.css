@@ -1,14 +1,196 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
+/* ── Design tokens ────────────────────────────────────────────────────────────
+   All color and typography values live here. Components reference these
+   variables rather than hard-coded values so the theme is a single source
+   of truth.
+─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg-primary:   #1a1a1a;
+  --bg-secondary: #262421;
+  --bg-tertiary:  #302e2b;
+  --bg-surface:   #3d3a36;
+
+  /* Text */
+  --text-primary:   #e8e6e3;
+  --text-secondary: #b0aca6;
+  --text-accent:    #ffffff;
+
+  /* Brand */
+  --brand-green:      #4d9e3f;
+  --brand-green-dark: #3a7a2f;
+
+  /* Board — Classic Wood theme */
+  --board-light:     #f0d9b5;
+  --board-dark:      #b58863;
+  --board-highlight: rgba(255, 255, 0, 0.5);
+  --board-selected:  rgba(20, 85, 30, 0.5);
+  --board-arrow:     rgba(0, 128, 0, 0.8);
+
+  /* Move classifications */
+  --move-brilliant:  #1bada6;
+  --move-great:      #5c8bb0;
+  --move-best:       #6aaa64;
+  --move-excellent:  #96bc4b;
+  --move-good:       #96bc4b;
+  --move-inaccuracy: #f6c640;
+  --move-mistake:    #e58c2a;
+  --move-blunder:    #cc3232;
+  --move-miss:       #cc3232;
+  --move-forced:     #b0aca6;
+  --move-book:       #a88865;
+
+  /* Evaluation bar */
+  --eval-white:  #ffffff;
+  --eval-black:  #1a1a1a;
+  --eval-bar-bg: #302e2b;
+}
+
+/* ── Tailwind theme extension ─────────────────────────────────────────────────
+   @theme inline maps :root variables to Tailwind utility classes without
+   re-declaring them as CSS properties.  Results:
+     bg-bg-primary, text-text-primary, bg-brand-green, text-move-blunder, …
+─────────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* Surfaces */
+  --color-bg-primary:   var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-tertiary:  var(--bg-tertiary);
+  --color-bg-surface:   var(--bg-surface);
+
+  /* Text */
+  --color-text-primary:   var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-accent:    var(--text-accent);
+
+  /* Brand */
+  --color-brand-green:      var(--brand-green);
+  --color-brand-green-dark: var(--brand-green-dark);
+
+  /* Move classifications */
+  --color-move-brilliant:  var(--move-brilliant);
+  --color-move-great:      var(--move-great);
+  --color-move-best:       var(--move-best);
+  --color-move-excellent:  var(--move-excellent);
+  --color-move-good:       var(--move-good);
+  --color-move-inaccuracy: var(--move-inaccuracy);
+  --color-move-mistake:    var(--move-mistake);
+  --color-move-blunder:    var(--move-blunder);
+  --color-move-miss:       var(--move-miss);
+  --color-move-forced:     var(--move-forced);
+  --color-move-book:       var(--move-book);
+
+  /* Eval bar */
+  --color-eval-white:  var(--eval-white);
+  --color-eval-black:  var(--eval-black);
+  --color-eval-bar-bg: var(--eval-bar-bg);
+
+  /* Typography */
+  --font-sans: "Noto Sans", "Segoe UI", sans-serif;
+  --font-mono: "Roboto Mono", monospace;
+}
+
+/* ── Base styles ──────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Noto Sans", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* PGN / algebraic notation rendered in monospace */
+.move-notation {
+  font-family: "Roboto Mono", monospace;
+}
+
+/* ── Component helpers ────────────────────────────────────────────────────── */
+
+/* Global scrollbar */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--bg-surface); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-surface); filter: brightness(1.3); }
+
+/* Move list Firefox override */
+.move-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-surface) transparent;
+}
+
+/* Move buttons — all hover/active state managed here so inline styles
+   don't fight specificity with Tailwind utility hover classes */
+.move-btn {
+  border: none;
+  border-left: 2px solid transparent;
+  background-color: transparent;
+  transition: background-color 0.15s ease, border-left-color 0.15s ease, color 0.15s ease;
+}
+.move-btn:hover {
+  background-color: var(--bg-surface);
+}
+.move-btn[aria-current="true"] {
+  background-color: var(--bg-tertiary);
+  border-left-color: var(--brand-green);
+}
+
+/* ── Button primitives ────────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--brand-green);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+.btn-primary:hover    { background-color: var(--brand-green-dark); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--bg-surface);
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+.btn-secondary:hover    { background-color: var(--bg-tertiary); }
+.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.btn-icon:hover { background-color: var(--bg-tertiary); }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes page-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .page-transition {
@@ -16,21 +198,15 @@
 }
 
 @keyframes explanation-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .explanation-fade-in {
   animation: explanation-fade-in 0.2s ease-out;
 }
 
-/* Visually hidden — readable by screen readers, invisible to sighted users */
+/* ── Accessibility ────────────────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px;
