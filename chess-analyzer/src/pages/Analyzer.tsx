@@ -7,7 +7,7 @@ import GameList from '../components/GameList';
 import { useChessGamesContext } from '../context/ChessGamesContext';
 import { evaluatePosition, ensureEngineReady } from '../services/stockfish';
 import { explainMove } from '../services/aiExplainer';
-import { evalBarWhitePct, formatEvalLabel, EvalBar } from '../utils/evalBar';
+import { formatEvalLabel, EvalBar } from '../utils/evalBar';
 import { BOARD_THEMES, loadSavedTheme } from '../utils/boardThemes';
 import type { BoardTheme } from '../utils/boardThemes';
 import { PIECE_SETS, loadSavedPieceSet, getKingThumbnail } from '../utils/pieceSets';
@@ -996,7 +996,7 @@ function EmptyState({ engineError }: { engineError: string | null }) {
       <p className="text-4xl" aria-hidden="true">♟</p>
       <p className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>No games loaded</p>
       <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
-        Fetch your Chess.com games on the Home page first, then come back here to analyse them.
+        Fetch your Chess.com games on the Home page first, then come back here to analyze them.
       </p>
       <Link to="/" className="btn-primary text-sm">
         Go to Home
@@ -1125,6 +1125,30 @@ export default function Analyzer() {
     [selectGame, engineError],
   );
 
+  // ── Playground game auto-load ────────────────────────────────────────────────
+
+  const didLoadPlaygroundRef = useRef(false);
+  useEffect(() => {
+    if (didLoadPlaygroundRef.current) return;
+    const pgn = sessionStorage.getItem('playground-review-pgn');
+    if (!pgn) return;
+    didLoadPlaygroundRef.current = true;
+    sessionStorage.removeItem('playground-review-pgn');
+    const date = new Date().toISOString().slice(0, 10);
+    handleSelectGame({
+      id: `playground-${Date.now()}`,
+      white: pgn.match(/\[White "([^"]+)"\]/)?.[1] ?? 'White',
+      black: pgn.match(/\[Black "([^"]+)"\]/)?.[1] ?? 'Black',
+      whiteRating: 0,
+      blackRating: 0,
+      date,
+      pgn,
+      timeControl: '-',
+      result: 'draw',
+      gameType: 'computer',
+    });
+  }, [handleSelectGame]);
+
   // ── AI explanation ──────────────────────────────────────────────────────────
 
   const handleExplain = useCallback(
@@ -1219,7 +1243,7 @@ export default function Analyzer() {
     const ply = plies[currentPly - 1];
     if (!ply) return null;
     const { classification } = classifyPly(evals, currentPly - 1, ply.color);
-    if (!classification) return null;
+    if (classification !== 'blunder' && classification !== 'mistake') return null;
     return { square: ply.to, classification };
   }, [currentPly, plies, evals]);
 
