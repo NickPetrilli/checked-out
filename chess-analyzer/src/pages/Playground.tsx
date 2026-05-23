@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Chess } from 'chess.js';
 import type { Move, Square } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
+import { EvalBar } from '../utils/evalBar';
+import { evaluatePosition, ensureEngineReady, destroyEngine } from '../services/stockfish';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const RIGHT_WIDTH  = 340;
@@ -19,6 +21,7 @@ export default function Playground() {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoves,     setLegalMoves]     = useState<Move[]>([]);
   const [flipped,        setFlipped]        = useState(false);
+  const [evalScore,      setEvalScore]      = useState<number | undefined>(undefined);
 
   const activeMoveRef    = useRef<HTMLButtonElement>(null);
   const boardAreaMaxWidth = 'min(100%, calc(100vh - 220px))';
@@ -55,6 +58,21 @@ export default function Playground() {
   useEffect(() => {
     activeMoveRef.current?.scrollIntoView({ block: 'nearest' });
   }, [cursor]);
+
+  // Initialize Stockfish on mount; destroy on unmount
+  useEffect(() => {
+    ensureEngineReady().catch(() => {});
+    return () => { destroyEngine(); };
+  }, []);
+
+  // Evaluate current position after every cursor change
+  useEffect(() => {
+    let cancelled = false;
+    evaluatePosition(currentFen, 16).then(result => {
+      if (!cancelled) setEvalScore(result.score);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentFen]);
 
   // ── Core move logic ────────────────────────────────────────────────────────
 
@@ -177,18 +195,9 @@ export default function Playground() {
       >
         <div className="flex flex-col w-full mx-auto" style={{ maxWidth: boardAreaMaxWidth }}>
 
-          {/* Eval bar (placeholder) + board */}
+          {/* Eval bar + board */}
           <div className="flex items-stretch gap-1.5">
-            <div
-              style={{
-                width: 20,
-                minHeight: 80,
-                flexShrink: 0,
-                alignSelf: 'stretch',
-                borderRadius: 2,
-                backgroundColor: 'var(--eval-bar-bg)',
-              }}
-            />
+            <EvalBar score={evalScore} />
             <div className="flex-1">
               <ChessBoard
                 fen={currentFen}
