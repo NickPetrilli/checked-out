@@ -1037,7 +1037,6 @@ export default function Analyzer() {
   const [activeExplanationPly, setActiveExplanationPly] = useState<number | null>(null);
   const [showEngineLines,      setShowEngineLines]      = useState(true);
   const [showBestMoveFor,      setShowBestMoveFor]      = useState<number | null>(null);
-  const [rightTab,             setRightTab]             = useState<'review' | 'analysis' | 'explore'>('review');
 
   const cancelRef       = useRef(0);
   const themePickerRef  = useRef<HTMLDivElement>(null);
@@ -1588,155 +1587,97 @@ export default function Analyzer() {
             borderLeft: '1px solid rgba(255,255,255,0.06)',
           }}
         >
-          {/* Tab bar */}
-          <div
-            className="flex shrink-0"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            {([
-              { key: 'review'   as const, label: 'Review'   },
-              { key: 'analysis' as const, label: 'Analysis' },
-              { key: 'explore'  as const, label: 'Explore'  },
-            ]).map(({ key, label }) => {
-              const active = rightTab === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setRightTab(key)}
-                  style={{
-                    fontSize: 13,
-                    padding: '10px 16px',
-                    background: 'none',
-                    border: 'none',
-                    borderBottom: `2px solid ${active ? 'var(--brand-green)' : 'transparent'}`,
-                    color: active ? 'var(--text-accent)' : 'var(--text-secondary)',
-                    fontWeight: active ? 600 : 400,
-                    cursor: 'pointer',
-                    transition: 'color 0.15s ease',
-                    marginBottom: -1,
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+
+            {analysisComplete && selectedGame && (
+              <AccuracyPanel
+                plies={plies}
+                evals={evals}
+                white={{ name: selectedGame.white, rating: selectedGame.whiteRating }}
+                black={{ name: selectedGame.black, rating: selectedGame.blackRating }}
+                username={username}
+              />
+            )}
+
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <MoveTable
+                plies={plies}
+                evals={evals}
+                currentPly={currentPly}
+                onJump={goTo}
+                openingName={opening}
+                explanations={explanations}
+                loadingExplainPly={loadingExplainPly}
+                onExplain={handleExplain}
+              />
+
+              <EngineLines
+                plyEval={currentEval ?? null}
+                isAnalyzed={analysisComplete}
+                expanded={showEngineLines}
+                onToggle={() => setShowEngineLines(o => !o)}
+              />
+
+              {/* Move feedback — shown when a classified move is selected */}
+              {classificationBadge && analysisComplete && (
+                <MoveFeedback
+                  classification={classificationBadge.classification}
+                  hasBestMove={currentPly > 0 && !!evals[currentPly - 1]?.bestMove}
+                  onBestMove={() => {
+                    setActiveExplanationPly(null);
+                    setShowBestMoveFor(currentPly - 1);
                   }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+                />
+              )}
 
-          {/* Tab content — key forces fade-in animation on switch */}
-          <div key={rightTab} className="page-transition flex flex-col flex-1 min-h-0 overflow-hidden">
-
-            {/* ── Review ── */}
-            {rightTab === 'review' && (
-              <>
-                {analysisComplete && selectedGame && (
-                  <AccuracyPanel
-                    plies={plies}
-                    evals={evals}
-                    white={{ name: selectedGame.white, rating: selectedGame.whiteRating }}
-                    black={{ name: selectedGame.black, rating: selectedGame.blackRating }}
-                    username={username}
-                  />
-                )}
-
-                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                  <MoveTable
-                    plies={plies}
-                    evals={evals}
-                    currentPly={currentPly}
-                    onJump={goTo}
-                    openingName={opening}
-                    explanations={explanations}
-                    loadingExplainPly={loadingExplainPly}
-                    onExplain={handleExplain}
-                  />
-
-                  <EngineLines
-                    plyEval={currentEval ?? null}
-                    isAnalyzed={analysisComplete}
-                    expanded={showEngineLines}
-                    onToggle={() => setShowEngineLines(o => !o)}
-                  />
-
-                  {/* Move feedback — shown when a classified move is selected */}
-                  {classificationBadge && analysisComplete && (
-                    <MoveFeedback
-                      classification={classificationBadge.classification}
-                      hasBestMove={currentPly > 0 && !!evals[currentPly - 1]?.bestMove}
-                      onBestMove={() => {
-                        setActiveExplanationPly(null);
-                        setShowBestMoveFor(currentPly - 1);
-                      }}
-                    />
-                  )}
-
-                  {/* Coach Analysis — shown when graduation cap triggers AI explanation */}
-                  {activeExplanationPly !== null && (() => {
-                    const isLoading = loadingExplainPly === activeExplanationPly
-                      || explanations[activeExplanationPly] === undefined;
-                    const isError   = explanations[activeExplanationPly] === EXPLANATION_ERROR;
-                    const text      = !isLoading && !isError
-                      ? explanations[activeExplanationPly]
-                      : null;
-                    return (
-                      <div className="shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ padding: '10px 16px 2px' }}>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            letterSpacing: '0.08em',
-                            color: 'var(--text-secondary)',
-                            textTransform: 'uppercase' as const,
-                          }}>
-                            Coach Analysis
-                          </span>
+              {/* Coach Analysis — shown when graduation cap triggers AI explanation */}
+              {activeExplanationPly !== null && (() => {
+                const isLoading = loadingExplainPly === activeExplanationPly
+                  || explanations[activeExplanationPly] === undefined;
+                const isError   = explanations[activeExplanationPly] === EXPLANATION_ERROR;
+                const text      = !isLoading && !isError
+                  ? explanations[activeExplanationPly]
+                  : null;
+                return (
+                  <div className="shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ padding: '10px 16px 2px' }}>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.08em',
+                        color: 'var(--text-secondary)',
+                        textTransform: 'uppercase' as const,
+                      }}>
+                        Coach Analysis
+                      </span>
+                    </div>
+                    <div style={{ padding: '6px 16px 12px' }}>
+                      {isLoading ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span
+                            className="w-3 h-3 border border-t-transparent rounded-full animate-spin shrink-0"
+                            style={{ borderColor: 'var(--text-secondary)' }}
+                          />
+                          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Analyzing…</span>
                         </div>
-                        <div style={{ padding: '6px 16px 12px' }}>
-                          {isLoading ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span
-                                className="w-3 h-3 border border-t-transparent rounded-full animate-spin shrink-0"
-                                style={{ borderColor: 'var(--text-secondary)' }}
-                              />
-                              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Analyzing…</span>
-                            </div>
-                          ) : isError ? (
-                            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                              Analysis unavailable. Try again.
-                            </span>
-                          ) : (
-                            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)' }}>
-                              {text}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      ) : isError ? (
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                          Analysis unavailable. Try again.
+                        </span>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                          {text}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-                  <p className="text-xs mt-2 mb-2 px-3 shrink-0" style={{ color: 'var(--text-secondary)', opacity: 0.45 }}>
-                    AI explanations use the Gemini free tier (250 req/day).
-                  </p>
-                </div>
-              </>
-            )}
-
-            {/* ── Analysis ── */}
-            {rightTab === 'analysis' && (
-              <div className="flex flex-col flex-1 items-center justify-center p-6 text-center">
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5 }}>
-                  Detailed analysis coming soon.
-                </p>
-              </div>
-            )}
-
-            {/* ── Explore ── */}
-            {rightTab === 'explore' && (
-              <div className="flex flex-col flex-1 items-center justify-center p-6 text-center">
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5 }}>
-                  Opening explorer coming soon.
-                </p>
-              </div>
-            )}
+              <p className="text-xs mt-2 mb-2 px-3 shrink-0" style={{ color: 'var(--text-secondary)', opacity: 0.45 }}>
+                AI explanations use the Gemini free tier (250 req/day).
+              </p>
+            </div>
 
           </div>
         </aside>

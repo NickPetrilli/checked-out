@@ -5,10 +5,11 @@ A React + TypeScript web app for exploring and analyzing Chess.com game history.
 ## Features
 
 - **Home** — search any public Chess.com username, choose how many months of history to load (1–12), see a win/loss/draw summary and date range
-- **Game Analyzer** — three-panel layout: filterable game list on the left, interactive chessboard with eval bar in the center, and a tabbed right panel with:
-  - *Review tab* — move list with blunder/mistake/inaccuracy badges, opening name, and player accuracy summaries
-  - *Analysis tab* — per-move engine lines (best move + continuation) and an AI coach explanation for flagged moves
-  - *Explore tab* — placeholder for future features
+- **Game Analyzer** — three-panel layout: filterable game list on the left, interactive chessboard with eval bar in the center, and a right panel with:
+  - Move list with blunder/mistake/inaccuracy badges and opening name
+  - Player accuracy summaries (Lichess accuracy formula, radial ring per player)
+  - Engine lines for the current position (best move + continuation)
+  - AI coach explanation for flagged moves (ask why a move was bad)
   - Stockfish depth-15 analysis flags blunders (>300 cp drop), mistakes (>100 cp drop), and inaccuracies (>50 cp drop)
   - Best-move arrow, board flip, and "Best Move" button to reveal the engine's top choice after a bad move
   - 8 board color themes and 4 piece sets (Neo, Classic, Alpha, Merida)
