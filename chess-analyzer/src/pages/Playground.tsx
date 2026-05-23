@@ -1,12 +1,15 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Chess } from 'chess.js';
 import type { Move, Square } from 'chess.js';
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb, Palette } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import { EvalBar, formatEvalLabel } from '../utils/evalBar';
 import { evaluateMultiPV, ensureEngineReady, destroyEngine } from '../services/stockfish';
 import type { MultiPVResult } from '../services/stockfish';
 import { PIECE_SETS, loadSavedPieceSet, getKingThumbnail } from '../utils/pieceSets';
+import { BOARD_THEMES, loadSavedTheme } from '../utils/boardThemes';
+import type { BoardTheme } from '../utils/boardThemes';
+import { detectOpening } from '../utils/openings';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const RIGHT_WIDTH  = 340;
@@ -41,10 +44,15 @@ export default function Playground() {
   const [flipped,        setFlipped]        = useState(false);
   const [multiPV,        setMultiPV]        = useState<MultiPVResult | null>(null);
   const [multiPVLoading, setMultiPVLoading] = useState(true);
-  const [arrowUCI,       setArrowUCI]       = useState<string | null>(null);
-  const [pieceSet,       setPieceSetState]  = useState(loadSavedPieceSet);
+  const [arrowUCI,         setArrowUCI]         = useState<string | null>(null);
+  const [pieceSet,         setPieceSetState]    = useState(loadSavedPieceSet);
+  const [boardTheme,       setBoardTheme]       = useState<BoardTheme>(loadSavedTheme);
+  const [themePickerOpen,  setThemePickerOpen]  = useState(false);
+  const [piecePickerOpen,  setPiecePickerOpen]  = useState(false);
 
-  const activeMoveRef = useRef<HTMLButtonElement>(null);
+  const activeMoveRef  = useRef<HTMLButtonElement>(null);
+  const themePickerRef = useRef<HTMLDivElement>(null);
+  const piecePickerRef = useRef<HTMLDivElement>(null);
   const boardAreaMaxWidth = 'min(100%, calc(100vh - 220px))';
 
   // Current board position derived from cursor
@@ -238,6 +246,25 @@ export default function Playground() {
     return () => window.removeEventListener('keydown', onKey);
   }, [cursor, goTo, history.length]);
 
+  // Close pickers on outside click
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node))
+        setThemePickerOpen(false);
+      if (piecePickerRef.current && !piecePickerRef.current.contains(e.target as Node))
+        setPiecePickerOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  // ── Opening detection ──────────────────────────────────────────────────────
+
+  const openingName = useMemo(
+    () => detectOpening(history.map(e => e.san)),
+    [history],
+  );
+
   // ── Reset ──────────────────────────────────────────────────────────────────
 
   function handleReset() {
@@ -282,6 +309,125 @@ export default function Playground() {
       >
         <div className="flex flex-col w-full mx-auto" style={{ maxWidth: boardAreaMaxWidth }}>
 
+          {/* Theme + Piece pickers — top-right above board */}
+          <div className="flex justify-end mb-1 gap-1">
+
+            {/* Piece picker */}
+            <div className="relative" ref={piecePickerRef}>
+              <button
+                onClick={() => { setPiecePickerOpen(o => !o); setThemePickerOpen(false); }}
+                aria-label="Change piece set"
+                title="Piece set"
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>♟</span>
+                <span>Pieces</span>
+              </button>
+              {piecePickerOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-2xl p-3"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    minWidth: 180,
+                  }}
+                >
+                  <p className="text-xs font-semibold mb-2.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    Piece style
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    {PIECE_SETS.map(set => {
+                      const isActive = pieceSet.id === set.id;
+                      return (
+                        <button
+                          key={set.id}
+                          onClick={() => { selectPieceSet(set.id); setPiecePickerOpen(false); }}
+                          aria-label={`Use ${set.name} pieces`}
+                          aria-pressed={isActive}
+                          className="flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors"
+                          style={{
+                            backgroundColor: isActive ? 'var(--bg-surface)' : 'transparent',
+                            outline: isActive ? '2px solid var(--brand-green)' : 'none',
+                            outlineOffset: -2,
+                          }}
+                        >
+                          <div style={{ width: 32, height: 32 }}>
+                            {getKingThumbnail(set)}
+                          </div>
+                          <span className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>
+                            {set.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Theme picker */}
+            <div className="relative" ref={themePickerRef}>
+              <button
+                onClick={() => { setThemePickerOpen(o => !o); setPiecePickerOpen(false); }}
+                aria-label="Change board theme"
+                title="Board theme"
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>Theme</span>
+              </button>
+              {themePickerOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-2xl p-3 w-56"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <p className="text-xs font-semibold mb-2.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    Board color
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {BOARD_THEMES.map(theme => (
+                      <button
+                        key={theme.id}
+                        onClick={() => {
+                          setBoardTheme(theme);
+                          localStorage.setItem('chessboard-theme', theme.id);
+                          setThemePickerOpen(false);
+                        }}
+                        aria-label={theme.name}
+                        title={theme.name}
+                        className={[
+                          'flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors',
+                          boardTheme.id === theme.id ? 'ring-2 ring-[var(--brand-green)]' : '',
+                        ].join(' ')}
+                        style={{
+                          backgroundColor: boardTheme.id === theme.id ? 'var(--bg-surface)' : 'transparent',
+                        }}
+                      >
+                        <div
+                          className="grid grid-cols-2 w-8 h-8 rounded-sm overflow-hidden"
+                          style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+                        >
+                          <div style={{ backgroundColor: theme.light }} />
+                          <div style={{ backgroundColor: theme.dark }} />
+                          <div style={{ backgroundColor: theme.dark }} />
+                          <div style={{ backgroundColor: theme.light }} />
+                        </div>
+                        <span className="text-xs leading-tight text-center" style={{ color: 'var(--text-secondary)' }}>
+                          {theme.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Eval bar + board */}
           <div className="flex items-stretch gap-1.5">
             <EvalBar score={multiPV?.lines[0]?.score} />
@@ -298,6 +444,8 @@ export default function Playground() {
                 onDragEnd={handleDragEnd}
                 bestMoveArrow={bestMoveArrow}
                 pieces={pieceSet.pieces}
+                darkSquareStyle={{ backgroundColor: boardTheme.dark }}
+                lightSquareStyle={{ backgroundColor: boardTheme.light }}
               />
             </div>
           </div>
@@ -533,6 +681,18 @@ export default function Playground() {
           ) : null}
         </div>
 
+        {/* ── Opening name ─────────────────────────────────────────────── */}
+        {openingName && (
+          <div
+            className="shrink-0 px-3 py-2"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <span style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              {openingName}
+            </span>
+          </div>
+        )}
+
         {/* ── Move history ─────────────────────────────────────────────── */}
         {history.length === 0 ? null : (
           <ol
@@ -608,49 +768,6 @@ export default function Playground() {
             })}
           </ol>
         )}
-        {/* ── Piece set selector ───────────────────────────────────────── */}
-        <div
-          className="shrink-0"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 12px 10px' }}
-        >
-          <p style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
-            color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6,
-          }}>
-            Pieces
-          </p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {PIECE_SETS.map(set => {
-              const isActive = pieceSet.id === set.id;
-              return (
-                <button
-                  key={set.id}
-                  onClick={() => selectPieceSet(set.id)}
-                  aria-label={`Use ${set.name} pieces`}
-                  aria-pressed={isActive}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    padding: '4px 6px', borderRadius: 4,
-                    border: `1px solid ${isActive ? 'var(--brand-green)' : 'var(--bg-surface)'}`,
-                    background: isActive ? 'rgba(108,179,0,0.08)' : 'transparent',
-                    cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
-                  }}
-                >
-                  <div style={{ width: 28, height: 28 }}>
-                    {getKingThumbnail(set)}
-                  </div>
-                  <span style={{
-                    fontSize: 9, fontWeight: 600,
-                    color: isActive ? 'var(--brand-green)' : 'var(--text-secondary)',
-                    letterSpacing: '0.04em',
-                  }}>
-                    {set.name.toUpperCase()}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </aside>
     </div>
   );
