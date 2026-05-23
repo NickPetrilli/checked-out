@@ -73,18 +73,9 @@ export default function ChessBoard({
     ? [{ startSquare: bestMoveArrow.from, endSquare: bestMoveArrow.to, color: 'rgba(0, 128, 0, 0.8)' }]
     : [];
 
-  // Last-move highlights + selected-square highlight (selected takes priority)
-  const squareStyles = useMemo((): Record<string, React.CSSProperties> => {
-    const styles: Record<string, React.CSSProperties> = {};
-    if (lastMoveSquares) {
-      styles[lastMoveSquares[0]] = { backgroundColor: 'var(--board-highlight)' };
-      styles[lastMoveSquares[1]] = { backgroundColor: 'var(--board-highlight)' };
-    }
-    if (selectedSquare) {
-      styles[selectedSquare] = { backgroundColor: 'var(--board-selected)' };
-    }
-    return styles;
-  }, [lastMoveSquares, selectedSquare]);
+  // Only badges need squareStyles — highlights and selection are rendered inside squareRenderer
+  // so they always appear above the board theme colors but beneath the piece.
+  const squareStyles = useMemo((): Record<string, React.CSSProperties> => ({}), []);
 
   const squareRenderer: SquareRenderer = useMemo(
     () =>
@@ -92,14 +83,47 @@ export default function ChessBoard({
         const badge = classificationBadge?.square === square
           ? BADGE[classificationBadge.classification]
           : null;
-        const lm = legalMoveSquares?.find(m => m.square === square) ?? null;
-        const dotColor = isDark(square) ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.2)';
+        const lm        = legalMoveSquares?.find(m => m.square === square) ?? null;
+        const isLastMove = lastMoveSquares != null &&
+          (lastMoveSquares[0] === square || lastMoveSquares[1] === square);
+        const isSelected = selectedSquare === square;
+        const dotColor   = isDark(square) ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.2)';
 
         return (
           <div
             style={{ position: 'relative', width: '100%', height: '100%' }}
             onClick={() => onSquareClick?.(square)}
           >
+            {/* Last-move highlight — rendered before children so piece sits on top */}
+            {isLastMove && !isSelected && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: isDark(square)
+                    ? 'rgba(170, 162, 58, 0.45)'
+                    : 'rgba(205, 210, 106, 0.45)',
+                  pointerEvents: 'none',
+                  zIndex: 0,
+                }}
+              />
+            )}
+
+            {/* Selected-piece highlight */}
+            {isSelected && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(20, 85, 30, 0.5)',
+                  pointerEvents: 'none',
+                  zIndex: 0,
+                }}
+              />
+            )}
+
             {children}
 
             {/* Classification badge (Analyzer) */}
@@ -162,7 +186,7 @@ export default function ChessBoard({
           </div>
         );
       },
-    [classificationBadge, legalMoveSquares, onSquareClick],
+    [classificationBadge, legalMoveSquares, onSquareClick, lastMoveSquares, selectedSquare],
   );
 
   return (
