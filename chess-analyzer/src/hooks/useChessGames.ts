@@ -32,7 +32,10 @@ function parseGame(raw: ChessComGame): ParsedGame {
   try {
     const chess = new Chess();
     chess.loadPgn(raw.pgn);
-    headers = chess.header();
+    const raw_headers = chess.header();
+    headers = Object.fromEntries(
+      Object.entries(raw_headers).filter((e): e is [string, string] => e[1] !== null),
+    );
     const pgnDate = headers['Date'];
     if (pgnDate) date = pgnDate.replace(/\./g, '-');
   } catch {

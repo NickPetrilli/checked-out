@@ -90,8 +90,8 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
           <div key={rank} className="flex">
             {/* Rank label */}
             <div
-              className="flex items-center justify-center text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}
-              style={{ width: 20, height: CELL }}
+              className="flex items-center justify-center text-xs shrink-0"
+              style={{ color: 'var(--text-secondary)', width: 20, height: CELL }}
             >
               {rank}
             </div>
@@ -131,8 +131,8 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
           {FILES.map((file) => (
             <div
               key={file}
-              className="flex items-center justify-center text-xs" style={{ color: 'var(--text-secondary)' }}
-              style={{ width: CELL }}
+              className="flex items-center justify-center text-xs"
+              style={{ color: 'var(--text-secondary)', width: CELL }}
             >
               {file}
             </div>
@@ -143,8 +143,10 @@ export default function HeatmapGrid({ data }: HeatmapGridProps) {
         {tooltip && (
           <div
             className="absolute z-20 px-2 py-1 rounded text-xs whitespace-nowrap pointer-events-none shadow-lg"
-            style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)' }}
             style={{
+              backgroundColor: 'var(--bg-tertiary)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-primary)',
               left: tooltip.x,
               top: tooltip.y - 4,
               transform: 'translate(-50%, -100%)',
