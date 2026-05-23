@@ -8,6 +8,9 @@ import { useChessGamesContext } from '../context/ChessGamesContext';
 import { evaluatePosition, ensureEngineReady } from '../services/stockfish';
 import { explainMove } from '../services/aiExplainer';
 import { evalBarWhitePct, formatEvalLabel, EvalBar } from '../utils/evalBar';
+import { BOARD_THEMES, loadSavedTheme } from '../utils/boardThemes';
+import type { BoardTheme } from '../utils/boardThemes';
+import { PIECE_SETS, loadSavedPieceSet, getKingThumbnail } from '../utils/pieceSets';
 import type { ParsedGame } from '../types/chess';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -38,26 +41,6 @@ const MISTAKE_THRESHOLD    = 100;
 const INACCURACY_THRESHOLD = 50;
 const RIGHT_WIDTH          = 340;
 const EXPLANATION_ERROR    = '__error__';
-
-// ── Board themes ─────────────────────────────────────────────────────────────
-
-const BOARD_THEMES = [
-  { id: 'classic',    name: 'Classic',    light: '#eeeed2', dark: '#769656' },
-  { id: 'walnut',     name: 'Walnut',     light: '#f0d9b5', dark: '#b58863' },
-  { id: 'ocean',      name: 'Ocean',      light: '#dee3e6', dark: '#8ca2ad' },
-  { id: 'lavender',   name: 'Lavender',   light: '#f0e4ff', dark: '#7c5cbf' },
-  { id: 'coral',      name: 'Coral',      light: '#f5dbd5', dark: '#b85040' },
-  { id: 'teal',       name: 'Teal',       light: '#d4ede8', dark: '#3a9e8a' },
-  { id: 'tournament', name: 'Tournament', light: '#d8d8d8', dark: '#6e6e6e' },
-  { id: 'night',      name: 'Night',      light: '#b8a898', dark: '#3a2a1e' },
-] as const;
-
-type BoardTheme = typeof BOARD_THEMES[number];
-
-function loadSavedTheme(): BoardTheme {
-  const saved = localStorage.getItem('chessboard-theme');
-  return BOARD_THEMES.find(t => t.id === saved) ?? BOARD_THEMES.find(t => t.id === 'walnut')!;
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1047,6 +1030,8 @@ export default function Analyzer() {
   const [opening,              setOpening]              = useState<string | null>(null);
   const [boardTheme,           setBoardTheme]           = useState<BoardTheme>(loadSavedTheme);
   const [themePickerOpen,      setThemePickerOpen]      = useState(false);
+  const [pieceSet,             setPieceSetState]        = useState(loadSavedPieceSet);
+  const [piecePickerOpen,      setPiecePickerOpen]      = useState(false);
   const [explanations,         setExplanations]         = useState<Record<number, string>>({});
   const [loadingExplainPly,    setLoadingExplainPly]    = useState<number | null>(null);
   const [activeExplanationPly, setActiveExplanationPly] = useState<number | null>(null);
@@ -1054,8 +1039,9 @@ export default function Analyzer() {
   const [showBestMoveFor,      setShowBestMoveFor]      = useState<number | null>(null);
   const [rightTab,             setRightTab]             = useState<'review' | 'analysis' | 'explore'>('review');
 
-  const cancelRef      = useRef(0);
-  const themePickerRef = useRef<HTMLDivElement>(null);
+  const cancelRef       = useRef(0);
+  const themePickerRef  = useRef<HTMLDivElement>(null);
+  const piecePickerRef  = useRef<HTMLDivElement>(null);
 
   // Pre-warm engine
   useEffect(() => {
@@ -1070,9 +1056,19 @@ export default function Analyzer() {
       if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
         setThemePickerOpen(false);
       }
+      if (piecePickerRef.current && !piecePickerRef.current.contains(e.target as Node)) {
+        setPiecePickerOpen(false);
+      }
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  const selectPieceSet = useCallback((id: string) => {
+    const found = PIECE_SETS.find(s => s.id === id);
+    if (!found) return;
+    localStorage.setItem('chess-piece-set', id);
+    setPieceSetState(found);
   }, []);
 
   // ── Game selection ──────────────────────────────────────────────────────────
@@ -1329,11 +1325,67 @@ export default function Analyzer() {
             never overflows the available height */}
         <div className="flex flex-col w-full mx-auto" style={{ maxWidth: boardAreaMaxWidth }}>
 
-          {/* Theme picker — tucked to the top-right of the board area */}
-          <div className="flex justify-end mb-1">
+          {/* Theme + Piece pickers — top-right of the board area */}
+          <div className="flex justify-end mb-1 gap-1">
+
+            {/* Piece set picker */}
+            <div className="relative" ref={piecePickerRef}>
+              <button
+                onClick={() => { setPiecePickerOpen(o => !o); setThemePickerOpen(false); }}
+                aria-label="Change piece set"
+                title="Piece set"
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>♟</span>
+                <span>Pieces</span>
+              </button>
+
+              {piecePickerOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-2xl p-3"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    minWidth: 180,
+                  }}
+                >
+                  <p className="text-xs font-semibold mb-2.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    Piece style
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    {PIECE_SETS.map(set => {
+                      const isActive = pieceSet.id === set.id;
+                      return (
+                        <button
+                          key={set.id}
+                          onClick={() => { selectPieceSet(set.id); setPiecePickerOpen(false); }}
+                          aria-label={`Use ${set.name} pieces`}
+                          aria-pressed={isActive}
+                          className="flex flex-col items-center gap-1 p-1.5 rounded-md transition-colors"
+                          style={{
+                            backgroundColor: isActive ? 'var(--bg-surface)' : 'transparent',
+                            outline: isActive ? '2px solid var(--brand-green)' : 'none',
+                            outlineOffset: -2,
+                          }}
+                        >
+                          <div style={{ width: 32, height: 32 }}>
+                            {getKingThumbnail(set)}
+                          </div>
+                          <span className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>
+                            {set.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="relative" ref={themePickerRef}>
               <button
-                onClick={() => setThemePickerOpen(o => !o)}
+                onClick={() => { setThemePickerOpen(o => !o); setPiecePickerOpen(false); }}
                 aria-label="Change board theme"
                 title="Board theme"
                 className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
@@ -1415,6 +1467,7 @@ export default function Analyzer() {
                 boardOrientation={flipped ? 'black' : 'white'}
                 lastMoveSquares={lastMoveSquares}
                 classificationBadge={classificationBadge}
+                pieces={pieceSet.pieces}
               />
             </div>
           </div>
