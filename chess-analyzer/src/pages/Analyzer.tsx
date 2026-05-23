@@ -1445,13 +1445,13 @@ export default function Analyzer() {
             </div>
           </div>
 
-          {/* Black nameplate */}
+          {/* Top nameplate — opponent when white is at bottom, self when flipped */}
           {selectedGame && (
             <PlayerNameplate
-              name={selectedGame.black}
-              rating={selectedGame.blackRating}
-              color="black"
-              isUser={username.toLowerCase() === selectedGame.black.toLowerCase()}
+              name={flipped ? selectedGame.white : selectedGame.black}
+              rating={flipped ? selectedGame.whiteRating : selectedGame.blackRating}
+              color={flipped ? 'white' : 'black'}
+              isUser={username.toLowerCase() === (flipped ? selectedGame.white : selectedGame.black).toLowerCase()}
             />
           )}
 
@@ -1472,13 +1472,13 @@ export default function Analyzer() {
             </div>
           </div>
 
-          {/* White nameplate */}
+          {/* Bottom nameplate — self when white is at bottom, opponent when flipped */}
           {selectedGame && (
             <PlayerNameplate
-              name={selectedGame.white}
-              rating={selectedGame.whiteRating}
-              color="white"
-              isUser={username.toLowerCase() === selectedGame.white.toLowerCase()}
+              name={flipped ? selectedGame.black : selectedGame.white}
+              rating={flipped ? selectedGame.blackRating : selectedGame.whiteRating}
+              color={flipped ? 'black' : 'white'}
+              isUser={username.toLowerCase() === (flipped ? selectedGame.black : selectedGame.white).toLowerCase()}
             />
           )}
 
