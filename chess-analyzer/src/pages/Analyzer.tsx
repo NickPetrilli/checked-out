@@ -1010,11 +1010,11 @@ const FEEDBACK_TEXT: Record<Classification, string> = {
 function MoveFeedback({
   classification,
   onBestMove,
-  onRetry,
+  hasBestMove,
 }: {
   classification: Classification;
   onBestMove:     () => void;
-  onRetry:        () => void;
+  hasBestMove:    boolean;
 }) {
   const { symbol, color, label } = CLASS_META[classification];
   return (
@@ -1038,11 +1038,13 @@ function MoveFeedback({
         {FEEDBACK_TEXT[classification]}
       </p>
       <div className="flex gap-2">
-        <button className="btn-primary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={onBestMove}>
+        <button
+          className="btn-primary"
+          style={{ fontSize: 11, padding: '4px 10px', opacity: hasBestMove ? 1 : 0.4 }}
+          onClick={onBestMove}
+          disabled={!hasBestMove}
+        >
           Best Move
-        </button>
-        <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={onRetry}>
-          Retry
         </button>
       </div>
     </div>
@@ -1383,13 +1385,23 @@ export default function Analyzer() {
     return { square: ply.to, classification };
   }, [currentPly, plies, evals]);
 
-  // Show best-move arrow when explanation is active OR "Best Move" button was pressed
+  // Show best-move arrow when explanation is active OR "Best Move" button was pressed.
+  // Graduation cap (activeExplanationPly) navigates to the ply and requires an exact match.
+  // Best Move button (showBestMoveFor) stays on the current position: show the arrow for
+  // evals[N-1] while the board is at ply N (position after the bad move).
   const bestMoveArrow = useMemo(() => {
-    const plyForArrow = activeExplanationPly ?? showBestMoveFor;
-    if (plyForArrow === null || currentPly !== plyForArrow) return null;
-    const uci = evals[plyForArrow]?.bestMove;
-    if (!uci || uci.length < 4) return null;
-    return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+    if (activeExplanationPly !== null) {
+      if (currentPly !== activeExplanationPly) return null;
+      const uci = evals[activeExplanationPly]?.bestMove;
+      if (!uci || uci.length < 4) return null;
+      return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+    }
+    if (showBestMoveFor !== null && currentPly === showBestMoveFor + 1) {
+      const uci = evals[showBestMoveFor]?.bestMove;
+      if (!uci || uci.length < 4) return null;
+      return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+    }
+    return null;
   }, [activeExplanationPly, showBestMoveFor, currentPly, evals]);
 
   if (games.length === 0) {
@@ -1771,12 +1783,11 @@ export default function Analyzer() {
                   {classificationBadge && analysisComplete && (
                     <MoveFeedback
                       classification={classificationBadge.classification}
+                      hasBestMove={currentPly > 0 && !!evals[currentPly - 1]?.bestMove}
                       onBestMove={() => {
-                        const prevPly = currentPly - 1;
-                        setShowBestMoveFor(prevPly);
-                        goTo(prevPly);
+                        setActiveExplanationPly(null);
+                        setShowBestMoveFor(currentPly - 1);
                       }}
-                      onRetry={() => goTo(currentPly - 1)}
                     />
                   )}
 
