@@ -12,91 +12,83 @@ function explainUrl(body: unknown): { url: string; bodyOverride?: unknown } {
   return { url: '/api/explain', bodyOverride: body };
 }
 
-export interface BlunderExplainParams {
-  fen:         string;
-  badMove:     string;
-  bestMove:    string;
-  evalBefore:  number;
-  evalAfter:   number;
-  pvBest:      string;
-  pvBad:       string;
-  playerColor: 'white' | 'black';
-  moveNumber:  number;
+export interface ExplainParams {
+  fen:            string;
+  movePlayed:     string;
+  bestMove:       string;
+  classification: string;
+  playerColor:    'white' | 'black';
+  moveNumber:     number;
 }
 
 const SYSTEM_PROMPT =
-  'You are a chess coach reviewing a specific move from a student\'s game. ' +
-  'Respond with ONLY the chess explanation — no greetings, no preamble, no sign-off. ' +
-  'Start your response immediately with the chess content. ' +
-  'Write 3-5 sentences in plain conversational prose. ' +
-  'Explain why the move was bad, what was missed, and why the better move is stronger. ' +
-  'Be direct, concise, and instructive.';
+  'You are a chess coach analyzing a game. Be concise, clear, and instructive. Respond in 3-4 sentences max.';
 
-export async function explainBlunder(params: BlunderExplainParams): Promise<string> {
-  const { fen, badMove, bestMove, evalBefore, evalAfter, pvBest, pvBad, playerColor, moveNumber } = params;
-  const swing = Math.abs(evalAfter - evalBefore);
+function buildUserPrompt(params: ExplainParams): string {
+  const { fen, movePlayed, bestMove, classification, playerColor, moveNumber } = params;
 
-  const userPrompt = `Position (FEN): ${fen}
-Move played: ${badMove} (move ${moveNumber}, ${playerColor})
-Better move: ${bestMove}
-Evaluation swing: ${swing} centipawns lost (before: ${evalBefore}, after: ${evalAfter})
+  if (classification === 'best' || classification === 'excellent') {
+    return (
+      `The player just played ${movePlayed} (move ${moveNumber}, ${playerColor}) in this position (FEN: ${fen}). ` +
+      `This was an excellent move. ` +
+      `Explain in plain English: why this move is strong, what it accomplishes positionally or tactically, and what principle it demonstrates.`
+    );
+  }
 
-Without any greeting or preamble, explain directly:
-- Why ${badMove} is a bad move in this position
-- What tactical or positional concept was missed
-- Why ${bestMove} is the stronger choice`;
+  const label = classification.charAt(0).toUpperCase() + classification.slice(1);
+  return (
+    `The player just played ${movePlayed} (move ${moveNumber}, ${playerColor}) in this position (FEN: ${fen}). ` +
+    `This move was classified as a ${label}. The best move was ${bestMove}. ` +
+    `Explain in plain English: why was the played move bad, what does the best move accomplish, and what should the player learn from this?`
+  );
+}
 
+export async function explainMove(params: ExplainParams): Promise<string> {
   const body = {
-    contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${userPrompt}` }] }],
+    contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${buildUserPrompt(params)}` }] }],
     generationConfig: {
-      maxOutputTokens: 1024,
+      maxOutputTokens: 512,
       temperature: 0.4,
     },
   };
 
-  try {
-    const { url, bodyOverride } = explainUrl(body);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bodyOverride ?? body),
-    });
+  const { url, bodyOverride } = explainUrl(body);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyOverride ?? body),
+  });
 
-    if (res.status === 429) {
-      return 'Rate limit reached. Please wait a moment before requesting another explanation.';
-    }
-
-    if (!res.ok) {
-      throw new Error(`Gemini API returned ${res.status}`);
-    }
-
-    const data = await res.json() as {
-      candidates?: {
-        content?:      { parts?: { text?: string }[] };
-        finishReason?: string;
-      }[];
-    };
-
-    const candidate    = data.candidates?.[0];
-    const text         = candidate?.content?.parts?.[0]?.text;
-    const finishReason = candidate?.finishReason;
-
-    if (!text) throw new Error('Empty response from Gemini');
-
-    if (finishReason === 'MAX_TOKENS') {
-      // Trim to last complete sentence so we never show a mid-word cutoff
-      const lastPeriod = Math.max(
-        text.lastIndexOf('. '),
-        text.lastIndexOf('! '),
-        text.lastIndexOf('? '),
-      );
-      const trimmed = lastPeriod > 0 ? text.slice(0, lastPeriod + 1) : text;
-      return trimmed.trim();
-    }
-
-    return text.trim();
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('VITE_GEMINI_API_KEY')) return err.message;
-    return 'Unable to generate explanation. Please try again.';
+  if (res.status === 429) {
+    throw new Error('Rate limit reached. Please wait a moment before requesting another explanation.');
   }
+
+  if (!res.ok) {
+    throw new Error(`Gemini API returned ${res.status}`);
+  }
+
+  const data = await res.json() as {
+    candidates?: {
+      content?:      { parts?: { text?: string }[] };
+      finishReason?: string;
+    }[];
+  };
+
+  const candidate    = data.candidates?.[0];
+  const text         = candidate?.content?.parts?.[0]?.text;
+  const finishReason = candidate?.finishReason;
+
+  if (!text) throw new Error('Empty response from Gemini');
+
+  if (finishReason === 'MAX_TOKENS') {
+    const lastPeriod = Math.max(
+      text.lastIndexOf('. '),
+      text.lastIndexOf('! '),
+      text.lastIndexOf('? '),
+    );
+    const trimmed = lastPeriod > 0 ? text.slice(0, lastPeriod + 1) : text;
+    return trimmed.trim();
+  }
+
+  return text.trim();
 }
