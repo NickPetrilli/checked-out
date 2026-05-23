@@ -6,7 +6,7 @@ import ChessBoard from '../components/ChessBoard';
 import GameList from '../components/GameList';
 import { useChessGamesContext } from '../context/ChessGamesContext';
 import { evaluatePosition, ensureEngineReady } from '../services/stockfish';
-import { explainBlunder } from '../services/aiExplainer';
+import { explainMove } from '../services/aiExplainer';
 import type { ParsedGame } from '../types/chess';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ const BLUNDER_THRESHOLD    = 300;
 const MISTAKE_THRESHOLD    = 100;
 const INACCURACY_THRESHOLD = 50;
 const RIGHT_WIDTH          = 340;
+const EXPLANATION_ERROR    = '__error__';
 
 // ── Board themes ─────────────────────────────────────────────────────────────
 
@@ -257,56 +258,6 @@ function ClassBadge({ c }: { c?: Classification }) {
     >
       {symbol}
     </span>
-  );
-}
-
-// ── Explanation panel (rendered in center column) ────────────────────────────
-
-interface ExplanationPanelProps {
-  ply:            Ply;
-  classification: Classification;
-  text:           string | null; // null = loading
-  onDismiss:      () => void;
-}
-
-function ExplanationPanel({ ply, classification, text, onDismiss }: ExplanationPanelProps) {
-  const moveLabel = `Move ${ply.moveNumber}${ply.color === 'b' ? '…' : '.'} ${ply.san}`;
-  const classLabel = classification === 'blunder' ? '?? Blunder' : '? Mistake';
-  const classColor = classification === 'blunder' ? 'text-red-400' : 'text-orange-400';
-
-  return (
-    <div className="explanation-fade-in w-full rounded-lg border border-amber-700/40 border-l-4 border-l-amber-500 bg-amber-950/20 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-700/30 bg-amber-950/30">
-        <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
-        <span className="text-amber-300 font-semibold text-sm">AI Coach</span>
-        <span className="text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>·</span>
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{moveLabel}</span>
-        <span className={`text-xs font-semibold ${classColor}`}>{classLabel}</span>
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss explanation"
-          className="ml-auto text-sm leading-none shrink-0 transition-colors"
-          style={{ color: 'var(--text-secondary)' }}
-          onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
-        >
-          &#x2715;
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="px-4 py-3">
-        {text === null ? (
-          <div className="flex items-center gap-3 text-sm text-amber-300">
-            <span className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-            Coach is thinking…
-          </div>
-        ) : (
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{text}</p>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1293,21 +1244,17 @@ export default function Analyzer() {
 
   const handleExplain = useCallback(
     async (plyIdx: number) => {
-      // Serve from cache if available
-      if (explanations[plyIdx] !== undefined) {
+      // Serve from cache; skip error sentinel so user can retry after a failure
+      if (explanations[plyIdx] !== undefined && explanations[plyIdx] !== EXPLANATION_ERROR) {
         setActiveExplanationPly(plyIdx);
-        // Jump board to position before this move so arrow is visible
-        setCurrentPly(plyIdx);
         return;
       }
 
       setLoadingExplainPly(plyIdx);
       setActiveExplanationPly(plyIdx);
-      setCurrentPly(plyIdx);
 
       const ply         = plies[plyIdx];
-      const evalBefore  = evals[plyIdx]?.normalizedScore ?? 0;
-      const evalAfter   = evals[plyIdx + 1]?.normalizedScore ?? 0;
+      const { classification } = classifyPly(evals, plyIdx, ply.color);
       const bestMoveUci = evals[plyIdx]?.bestMove ?? '';
 
       // Convert UCI best move to SAN for a more readable prompt
@@ -1325,19 +1272,20 @@ export default function Analyzer() {
         } catch { /* leave as UCI */ }
       }
 
-      const text = await explainBlunder({
-        fen:         ply.fenBefore,
-        badMove:     ply.san,
-        bestMove:    bestMoveSan,
-        evalBefore,
-        evalAfter,
-        pvBest:      bestMoveUci ? `Best move: ${bestMoveSan}` : '',
-        pvBad:       `Player played: ${ply.san}`,
-        playerColor: ply.color === 'w' ? 'white' : 'black',
-        moveNumber:  ply.moveNumber,
-      });
+      try {
+        const text = await explainMove({
+          fen:            ply.fenBefore,
+          movePlayed:     ply.san,
+          bestMove:       bestMoveSan,
+          classification: classification ?? 'inaccuracy',
+          playerColor:    ply.color === 'w' ? 'white' : 'black',
+          moveNumber:     ply.moveNumber,
+        });
+        setExplanations(prev => ({ ...prev, [plyIdx]: text }));
+      } catch {
+        setExplanations(prev => ({ ...prev, [plyIdx]: EXPLANATION_ERROR }));
+      }
 
-      setExplanations(prev => ({ ...prev, [plyIdx]: text }));
       setLoadingExplainPly(null);
     },
     [plies, evals, explanations],
@@ -1361,6 +1309,11 @@ export default function Analyzer() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [currentPly, goTo, fens.length]);
+
+  // Clear Coach Analysis panel whenever the user navigates to a different move
+  useEffect(() => {
+    setActiveExplanationPly(null);
+  }, [currentPly]);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -1673,24 +1626,6 @@ export default function Analyzer() {
             </div>
           )}
 
-          {/* AI Coach explanation panel */}
-          {(activeExplanationPly !== null || loadingExplainPly !== null) && (() => {
-            const plyIdx = activeExplanationPly ?? loadingExplainPly!;
-            const ply    = plies[plyIdx];
-            const cls    = classifyPly(evals, plyIdx, ply?.color ?? 'w').classification;
-            if (!ply || !cls) return null;
-            return (
-              <div className="mt-2">
-                <ExplanationPanel
-                  ply={ply}
-                  classification={cls}
-                  text={explanations[plyIdx] ?? null}
-                  onDismiss={() => setActiveExplanationPly(null)}
-                />
-              </div>
-            );
-          })()}
-
           {!selectedGame && (
             <p className="text-sm mt-4 text-center" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
               Select a game from the list to begin analysis.
@@ -1790,6 +1725,50 @@ export default function Analyzer() {
                       }}
                     />
                   )}
+
+                  {/* Coach Analysis — shown when graduation cap triggers AI explanation */}
+                  {activeExplanationPly !== null && (() => {
+                    const isLoading = loadingExplainPly === activeExplanationPly
+                      || explanations[activeExplanationPly] === undefined;
+                    const isError   = explanations[activeExplanationPly] === EXPLANATION_ERROR;
+                    const text      = !isLoading && !isError
+                      ? explanations[activeExplanationPly]
+                      : null;
+                    return (
+                      <div className="shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div style={{ padding: '10px 16px 2px' }}>
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            letterSpacing: '0.08em',
+                            color: 'var(--text-secondary)',
+                            textTransform: 'uppercase' as const,
+                          }}>
+                            Coach Analysis
+                          </span>
+                        </div>
+                        <div style={{ padding: '6px 16px 12px' }}>
+                          {isLoading ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span
+                                className="w-3 h-3 border border-t-transparent rounded-full animate-spin shrink-0"
+                                style={{ borderColor: 'var(--text-secondary)' }}
+                              />
+                              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Analyzing…</span>
+                            </div>
+                          ) : isError ? (
+                            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                              Analysis unavailable. Try again.
+                            </span>
+                          ) : (
+                            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                              {text}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <p className="text-xs mt-2 mb-2 px-3 shrink-0" style={{ color: 'var(--text-secondary)', opacity: 0.45 }}>
                     AI explanations use the Gemini free tier (250 req/day).
