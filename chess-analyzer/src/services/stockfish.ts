@@ -109,6 +109,7 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
     };
 
     w.addEventListener('message', handler);
+    w.postMessage('setoption name UCI_LimitStrength value false');
     w.postMessage('setoption name MultiPV value 1');
     w.postMessage(`position fen ${fen}`);
     w.postMessage(`go depth ${depth}`);
@@ -161,9 +162,39 @@ function runMultiPV(fen: string, depth: number, numLines: number): Promise<Multi
     };
 
     w.addEventListener('message', handler);
+    w.postMessage('setoption name UCI_LimitStrength value false');
     w.postMessage(`setoption name MultiPV value ${numLines}`);
     w.postMessage(`position fen ${fen}`);
     w.postMessage(`go depth ${depth}`);
+  });
+}
+
+// ── Bot move ──────────────────────────────────────────────────────────────────
+
+function runBotMove(fen: string, elo: number, skillLevel: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Chess engine is not ready.'));
+      return;
+    }
+    const w = worker;
+
+    const handler = ({ data }: MessageEvent<string>) => {
+      if (typeof data !== 'string') return;
+      const bmMatch = data.match(/^bestmove\s+(\S+)/);
+      if (bmMatch) {
+        w.removeEventListener('message', handler);
+        resolve(bmMatch[1] === '(none)' ? '' : bmMatch[1]);
+      }
+    };
+
+    w.addEventListener('message', handler);
+    w.postMessage('setoption name UCI_LimitStrength value true');
+    w.postMessage(`setoption name UCI_Elo value ${elo}`);
+    w.postMessage(`setoption name Skill Level value ${skillLevel}`);
+    w.postMessage('setoption name MultiPV value 1');
+    w.postMessage(`position fen ${fen}`);
+    w.postMessage('go movetime 100');
   });
 }
 
@@ -187,6 +218,16 @@ export async function evaluatePosition(fen: string, depth = 15): Promise<EvalRes
 export async function evaluateMultiPV(fen: string, depth = 18, numLines = 5): Promise<MultiPVResult> {
   await ensureWorker();
   const result = chain.then(() => runMultiPV(fen, depth, numLines));
+  chain = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
+
+export async function getBotMove(fen: string, elo: number, skillLevel: number): Promise<string> {
+  await ensureWorker();
+  const result = chain.then(() => runBotMove(fen, elo, skillLevel));
   chain = result.then(
     () => {},
     () => {},
