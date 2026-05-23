@@ -4,6 +4,7 @@ import { ChessGamesContext, useChessGamesContext } from './context/ChessGamesCon
 import Home from './pages/Home';
 import Analyzer from './pages/Analyzer';
 import Heatmap from './pages/Heatmap';
+import Playground from './pages/Playground';
 
 // ── Nav bar ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,9 @@ function NavBar() {
       <NavLink to="/heatmap" aria-label="Move Heatmap" className={({ isActive }) => (isActive ? active : inactive)}>
         Heatmap
       </NavLink>
+      <NavLink to="/playground" aria-label="Playground" className={({ isActive }) => (isActive ? active : inactive)}>
+        Playground
+      </NavLink>
     </nav>
   );
 }
@@ -77,7 +81,8 @@ function AnimatedRoutes() {
       <Routes>
         <Route path="/"         element={<Home />} />
         <Route path="/analyzer" element={<Analyzer />} />
-        <Route path="/heatmap"  element={<Heatmap />} />
+        <Route path="/heatmap"      element={<Heatmap />} />
+        <Route path="/playground"   element={<Playground />} />
       </Routes>
     </div>
   );
