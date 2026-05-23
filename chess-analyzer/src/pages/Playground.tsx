@@ -6,6 +6,7 @@ import ChessBoard from '../components/ChessBoard';
 import { EvalBar, formatEvalLabel } from '../utils/evalBar';
 import { evaluateMultiPV, ensureEngineReady, destroyEngine } from '../services/stockfish';
 import type { MultiPVResult } from '../services/stockfish';
+import { PIECE_SETS, loadSavedPieceSet, getKingThumbnail } from '../utils/pieceSets';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const RIGHT_WIDTH  = 340;
@@ -41,6 +42,7 @@ export default function Playground() {
   const [multiPV,        setMultiPV]        = useState<MultiPVResult | null>(null);
   const [multiPVLoading, setMultiPVLoading] = useState(true);
   const [arrowUCI,       setArrowUCI]       = useState<string | null>(null);
+  const [pieceSet,       setPieceSetState]  = useState(loadSavedPieceSet);
 
   const activeMoveRef = useRef<HTMLButtonElement>(null);
   const boardAreaMaxWidth = 'min(100%, calc(100vh - 220px))';
@@ -119,6 +121,33 @@ export default function Playground() {
     });
     return () => { cancelled = true; };
   }, [currentFen]);
+
+  // ── Piece set ──────────────────────────────────────────────────────────────
+
+  const selectPieceSet = useCallback((id: string) => {
+    const found = PIECE_SETS.find(s => s.id === id);
+    if (!found) return;
+    localStorage.setItem('chess-piece-set', id);
+    setPieceSetState(found);
+  }, []);
+
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+
+  const handleDragBegin = useCallback((square: string) => {
+    if (isOver) return;
+    const piece = chess.get(square as Square);
+    if (!piece || piece.color !== turn) return;
+    const moves = chess.moves({ square: square as Square, verbose: true }) as Move[];
+    if (moves.length === 0) return;
+    setArrowUCI(null);
+    setSelectedSquare(square);
+    setLegalMoves(moves);
+  }, [chess, turn, isOver]);
+
+  const handleDragEnd = useCallback(() => {
+    setSelectedSquare(null);
+    setLegalMoves([]);
+  }, []);
 
   // ── Hint ───────────────────────────────────────────────────────────────────
 
@@ -265,7 +294,10 @@ export default function Playground() {
                 selectedSquare={selectedSquare}
                 legalMoveSquares={legalMoveSquares}
                 onSquareClick={handleSquareClick}
+                onDragBegin={handleDragBegin}
+                onDragEnd={handleDragEnd}
                 bestMoveArrow={bestMoveArrow}
+                pieces={pieceSet.pieces}
               />
             </div>
           </div>
@@ -576,6 +608,49 @@ export default function Playground() {
             })}
           </ol>
         )}
+        {/* ── Piece set selector ───────────────────────────────────────── */}
+        <div
+          className="shrink-0"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 12px 10px' }}
+        >
+          <p style={{
+            fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
+            color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6,
+          }}>
+            Pieces
+          </p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {PIECE_SETS.map(set => {
+              const isActive = pieceSet.id === set.id;
+              return (
+                <button
+                  key={set.id}
+                  onClick={() => selectPieceSet(set.id)}
+                  aria-label={`Use ${set.name} pieces`}
+                  aria-pressed={isActive}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    padding: '4px 6px', borderRadius: 4,
+                    border: `1px solid ${isActive ? 'var(--brand-green)' : 'var(--bg-surface)'}`,
+                    background: isActive ? 'rgba(108,179,0,0.08)' : 'transparent',
+                    cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <div style={{ width: 28, height: 28 }}>
+                    {getKingThumbnail(set)}
+                  </div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 600,
+                    color: isActive ? 'var(--brand-green)' : 'var(--text-secondary)',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {set.name.toUpperCase()}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </aside>
     </div>
   );
