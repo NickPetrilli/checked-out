@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
-import type { Arrow, PieceDropHandlerArgs, SquareRenderer } from 'react-chessboard';
+import type { Arrow, PieceDropHandlerArgs, PieceHandlerArgs, PieceRenderObject, SquareRenderer } from 'react-chessboard';
 
 // Badge metadata keyed by classification — mirrors the CSS variable values so
 // the board component is self-contained (no DOM access needed here).
@@ -31,6 +31,12 @@ interface ChessBoardProps {
   legalMoveSquares?: { square: string; isCapture: boolean }[];
   /** Called when the user clicks a square (for click-to-move) */
   onSquareClick?: (square: string) => void;
+  /** Called when the user starts dragging a piece (square it came from) */
+  onDragBegin?: (square: string) => void;
+  /** Called when a drag ends without completing a valid move */
+  onDragEnd?: () => void;
+  /** Custom piece renderers — null/undefined uses the react-chessboard default */
+  pieces?: PieceRenderObject | null;
 }
 
 export default function ChessBoard({
@@ -45,10 +51,22 @@ export default function ChessBoard({
   selectedSquare,
   legalMoveSquares,
   onSquareClick,
+  onDragBegin,
+  onDragEnd,
+  pieces,
 }: ChessBoardProps) {
   function handleDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
-    if (!targetSquare || !onMove) return false;
-    return onMove(sourceSquare, targetSquare);
+    if (!targetSquare || !onMove) {
+      onDragEnd?.();
+      return false;
+    }
+    const success = onMove(sourceSquare, targetSquare);
+    if (!success) onDragEnd?.();
+    return success;
+  }
+
+  function handlePieceDrag({ square }: PieceHandlerArgs) {
+    if (square) onDragBegin?.(square);
   }
 
   const arrows: Arrow[] = bestMoveArrow
@@ -154,6 +172,7 @@ export default function ChessBoard({
           position: fen ?? 'start',
           boardOrientation,
           onPieceDrop: onMove ? handleDrop : undefined,
+          onPieceDrag: onDragBegin ? handlePieceDrag : undefined,
           arrows,
           squareStyles,
           squareRenderer,
@@ -162,6 +181,7 @@ export default function ChessBoard({
           lightSquareNotationStyle: { color: 'rgba(107, 83, 55, 0.75)', fontSize: 10, fontWeight: 600 },
           darkSquareNotationStyle:  { color: 'rgba(240, 217, 181, 0.75)', fontSize: 10, fontWeight: 600 },
           animationDurationInMs: 150,
+          ...(pieces           && { pieces }),
           ...(darkSquareStyle  && { darkSquareStyle }),
           ...(lightSquareStyle && { lightSquareStyle }),
         }}
