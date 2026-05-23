@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Chess } from 'chess.js';
 import type { Move, Square } from 'chess.js';
+import { Lightbulb } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import { EvalBar } from '../utils/evalBar';
 import { evaluatePosition, ensureEngineReady, destroyEngine } from '../services/stockfish';
@@ -22,8 +23,11 @@ export default function Playground() {
   const [legalMoves,     setLegalMoves]     = useState<Move[]>([]);
   const [flipped,        setFlipped]        = useState(false);
   const [evalScore,      setEvalScore]      = useState<number | undefined>(undefined);
+  const [hintArrow,      setHintArrow]      = useState<{ from: string; to: string } | null>(null);
+  const [hintLoading,    setHintLoading]    = useState(false);
 
   const activeMoveRef    = useRef<HTMLButtonElement>(null);
+  const hintCancelRef    = useRef(false);
   const boardAreaMaxWidth = 'min(100%, calc(100vh - 220px))';
 
   // Current board position derived from cursor
@@ -48,8 +52,11 @@ export default function Playground() {
     [legalMoves],
   );
 
-  // Clear piece selection whenever the board position changes
+  // Clear piece selection and hint whenever the board position changes
   useEffect(() => {
+    hintCancelRef.current = true;
+    setHintArrow(null);
+    setHintLoading(false);
     setSelectedSquare(null);
     setLegalMoves([]);
   }, [cursor]);
@@ -74,6 +81,30 @@ export default function Playground() {
     return () => { cancelled = true; };
   }, [currentFen]);
 
+  // ── Hint ───────────────────────────────────────────────────────────────────
+
+  const handleHint = useCallback(async () => {
+    if (isOver) return;
+    if (hintArrow) {
+      setHintArrow(null);
+      return;
+    }
+    hintCancelRef.current = false;
+    setHintLoading(true);
+    try {
+      const result = await evaluatePosition(currentFen, 18);
+      if (!hintCancelRef.current) {
+        const uci = result.bestMove;
+        if (uci && uci.length >= 4) {
+          setHintArrow({ from: uci.slice(0, 2), to: uci.slice(2, 4) });
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (!hintCancelRef.current) setHintLoading(false);
+  }, [hintArrow, currentFen, isOver]);
+
   // ── Core move logic ────────────────────────────────────────────────────────
 
   const makeMove = useCallback(
@@ -86,6 +117,7 @@ export default function Playground() {
         const entry: HistoryEntry = { san: result.san, from: result.from, to: result.to, fen: c.fen() };
         setHistory(prev => [...prev.slice(0, cursor), entry]);
         setCursor(cursor + 1);
+        setHintArrow(null);
         setSelectedSquare(null);
         setLegalMoves([]);
         return true;
@@ -114,6 +146,7 @@ export default function Playground() {
         if (piece && piece.color === turn) {
           const moves = chess.moves({ square: square as Square, verbose: true }) as Move[];
           if (moves.length > 0) {
+            setHintArrow(null);
             setSelectedSquare(square);
             setLegalMoves(moves);
             return;
@@ -207,6 +240,7 @@ export default function Playground() {
                 selectedSquare={selectedSquare}
                 legalMoveSquares={legalMoveSquares}
                 onSquareClick={handleSquareClick}
+                bestMoveArrow={hintArrow}
               />
             </div>
           </div>
@@ -283,6 +317,50 @@ export default function Playground() {
               style={{ borderRadius: 4, color: 'var(--text-secondary)' }}
             >
               ↺
+            </button>
+          </div>
+
+          {/* Hint button */}
+          <div className="flex justify-center mt-2">
+            <button
+              onClick={handleHint}
+              disabled={hintLoading || isOver}
+              aria-label={hintArrow ? 'Hide hint' : 'Show hint'}
+              title="Hint"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: '1px solid var(--bg-surface)',
+                background: 'transparent',
+                color: hintArrow ? 'var(--brand-green)' : 'var(--text-secondary)',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: hintLoading || isOver ? 'default' : 'pointer',
+                opacity: isOver ? 0.3 : 1,
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+            >
+              {hintLoading ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 13,
+                    height: 13,
+                    borderRadius: '50%',
+                    border: '2px solid rgba(255,255,255,0.15)',
+                    borderTopColor: 'var(--text-secondary)',
+                    display: 'inline-block',
+                    animation: 'spin 0.7s linear infinite',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <Lightbulb size={13} aria-hidden="true" />
+              )}
+              Hint
             </button>
           </div>
         </div>
