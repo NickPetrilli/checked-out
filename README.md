@@ -1,12 +1,25 @@
 # Chess Analyzer
 
-A React + TypeScript web app for exploring and analyzing Chess.com game history. Load games for any public Chess.com username, replay them move-by-move with Stockfish engine evaluation, and visualize square activity across hundreds of games with a move heatmap.
+A React + TypeScript web app for exploring and analyzing Chess.com game history. Load games for any public Chess.com username, replay them move-by-move with Stockfish engine evaluation, visualize square activity across all your games, and practice freely in an interactive playground.
 
 ## Features
 
 - **Home** — search any public Chess.com username, choose how many months of history to load (1–12), see a win/loss/draw summary and date range
-- **Game Analyzer** — three-panel layout: filterable game list on the left, interactive chessboard in the center, evaluation bar + move list + summary panel on the right; Stockfish depth-15 engine evaluates every position and flags blunders (>300 cp drop) and mistakes (>100 cp drop)
+- **Game Analyzer** — three-panel layout: filterable game list on the left, interactive chessboard with eval bar in the center, and a tabbed right panel with:
+  - *Review tab* — move list with blunder/mistake/inaccuracy badges, opening name, and player accuracy summaries
+  - *Analysis tab* — per-move engine lines (best move + continuation) and an AI coach explanation for flagged moves
+  - *Explore tab* — placeholder for future features
+  - Stockfish depth-15 analysis flags blunders (>300 cp drop), mistakes (>100 cp drop), and inaccuracies (>50 cp drop)
+  - Best-move arrow, board flip, and "Best Move" button to reveal the engine's top choice after a bad move
+  - 8 board color themes and 4 piece sets (Neo, Classic, Alpha, Merida)
 - **Move Heatmap** — visualize square activity across all loaded games; filter by piece type, color played, origins vs. destinations, and game result
+- **Playground** — free-play board with:
+  - Live Stockfish MultiPV analysis (top 5 engine lines, depth 18)
+  - Hint button showing the best move as a green arrow
+  - Opening name detection as moves are played (~50 common openings)
+  - Move history with keyboard navigation (← →)
+  - Board flip, reset, eval bar
+  - 8 board color themes and 4 piece sets (shared with Analyzer, persisted to localStorage)
 
 ### Technical highlights
 
@@ -15,6 +28,7 @@ A React + TypeScript web app for exploring and analyzing Chess.com game history.
 - Automatic 429 rate-limit retry and user-friendly error messages
 - Results cached in memory so switching months/filters doesn't re-fetch
 - Three-stage `useMemo` pipeline in Heatmap (parse once, filter, aggregate) for fast filter response
+- MultiPV evaluation queued via a shared promise chain so Analyzer and Playground never issue concurrent engine calls
 
 ## Stack
 
@@ -77,10 +91,12 @@ The Stockfish WASM files (`stockfish-18-lite-single.js` and `.wasm`) are copied 
 ```
 chess-analyzer/
 ├── public/
+│   ├── favicon.svg
 │   ├── stockfish-18-lite-single.js   # copied by vite plugin
 │   └── stockfish-18-lite-single.wasm
 ├── src/
 │   ├── components/
+│   │   ├── ChessBoard.tsx    # shared board wrapper (arrows, highlights, legal dots, badges)
 │   │   ├── GameList.tsx      # filterable, paginated game list
 │   │   └── HeatmapGrid.tsx   # 8x8 heat grid with tooltip
 │   ├── context/
@@ -89,16 +105,23 @@ chess-analyzer/
 │   │   ├── useChessGames.ts  # fetch, parse, cache Chess.com games
 │   │   └── useDebounce.ts    # generic debounce hook
 │   ├── pages/
-│   │   ├── Home.tsx          # search + summary
-│   │   ├── Analyzer.tsx      # board + engine evaluation
-│   │   └── Heatmap.tsx       # move frequency visualization
+│   │   ├── Home.tsx          # username search + game summary
+│   │   ├── Analyzer.tsx      # board + engine evaluation + AI coach
+│   │   ├── Heatmap.tsx       # move frequency visualization
+│   │   └── Playground.tsx    # free-play board with live engine analysis
 │   ├── services/
+│   │   ├── aiExplainer.ts    # AI move explanation (Claude API)
 │   │   ├── chesscom.ts       # Chess.com API client
-│   │   └── stockfish.ts      # Stockfish UCI Web Worker wrapper
+│   │   └── stockfish.ts      # Stockfish UCI Web Worker wrapper (single + MultiPV)
 │   ├── types/
 │   │   └── chess.ts          # shared TypeScript interfaces
+│   ├── utils/
+│   │   ├── boardThemes.ts    # 8 board color themes, shared by Analyzer + Playground
+│   │   ├── evalBar.tsx       # EvalBar component + score formatting helpers
+│   │   ├── openings.ts       # SAN-prefix opening detection (~50 openings)
+│   │   └── pieceSets.tsx     # 4 piece sets via Lichess CDN, shared by Analyzer + Playground
 │   ├── App.tsx               # router, nav bar, context provider
-│   └── index.css             # Tailwind import + page transitions
+│   └── index.css             # design tokens, Tailwind, component CSS
 ├── vite.config.ts
 └── package.json
 ```
