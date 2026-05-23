@@ -6,6 +6,19 @@ export interface EvalResult {
   pv: string[];
 }
 
+export interface PVLine {
+  rank: number;
+  score: number;
+  bestMove: string;
+  pv: string[];
+  depth: number;
+}
+
+export interface MultiPVResult {
+  lines: PVLine[];
+  depth: number;
+}
+
 let worker: Worker | null = null;
 let initPromise: Promise<void> | null = null;
 let chain = Promise.resolve();
@@ -96,6 +109,59 @@ function runEval(fen: string, depth: number): Promise<EvalResult> {
     };
 
     w.addEventListener('message', handler);
+    w.postMessage('setoption name MultiPV value 1');
+    w.postMessage(`position fen ${fen}`);
+    w.postMessage(`go depth ${depth}`);
+  });
+}
+
+function runMultiPV(fen: string, depth: number, numLines: number): Promise<MultiPVResult> {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Chess engine is not ready.'));
+      return;
+    }
+    const w = worker;
+    const lineMap = new Map<number, PVLine>();
+    let reachedDepth = 0;
+
+    const handler = ({ data }: MessageEvent<string>) => {
+      if (typeof data !== 'string') return;
+
+      const multipvMatch = data.match(/\bmultipv\s+(\d+)/);
+      if (multipvMatch) {
+        const rank = parseInt(multipvMatch[1], 10);
+        const depthMatch = data.match(/\bdepth\s+(\d+)/);
+        const lineDepth = depthMatch ? parseInt(depthMatch[1], 10) : 0;
+
+        let score = 0;
+        const cpMatch = data.match(/score cp (-?\d+)/);
+        if (cpMatch) score = normalisedScore(parseInt(cpMatch[1], 10), fen);
+        const mateMatch = data.match(/score mate (-?\d+)/);
+        if (mateMatch) {
+          const n = parseInt(mateMatch[1], 10);
+          score = normalisedScore(n > 0 ? 10_000 : -10_000, fen);
+        }
+
+        const pvMatch = data.match(/\bpv\s+(.+)/);
+        const pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+
+        lineMap.set(rank, { rank, score, bestMove: pv[0] ?? '', pv, depth: lineDepth });
+        if (lineDepth > reachedDepth) reachedDepth = lineDepth;
+      }
+
+      const bmMatch = data.match(/^bestmove/);
+      if (bmMatch) {
+        w.removeEventListener('message', handler);
+        const sorted = Array.from(lineMap.values())
+          .sort((a, b) => a.rank - b.rank)
+          .slice(0, numLines);
+        resolve({ lines: sorted, depth: reachedDepth });
+      }
+    };
+
+    w.addEventListener('message', handler);
+    w.postMessage(`setoption name MultiPV value ${numLines}`);
     w.postMessage(`position fen ${fen}`);
     w.postMessage(`go depth ${depth}`);
   });
@@ -111,6 +177,16 @@ export function ensureEngineReady(): Promise<void> {
 export async function evaluatePosition(fen: string, depth = 15): Promise<EvalResult> {
   await ensureWorker();
   const result = chain.then(() => runEval(fen, depth));
+  chain = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
+
+export async function evaluateMultiPV(fen: string, depth = 18, numLines = 5): Promise<MultiPVResult> {
+  await ensureWorker();
+  const result = chain.then(() => runMultiPV(fen, depth, numLines));
   chain = result.then(
     () => {},
     () => {},

@@ -206,6 +206,17 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.6; }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  background-color: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
 .explanation-fade-in {
   animation: explanation-fade-in 0.2s ease-out;
 }
