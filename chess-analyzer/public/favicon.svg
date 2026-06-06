@@ -1,17 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130">
   <defs>
-    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%"   stop-color="#d4a062"/>
-      <stop offset="50%"  stop-color="#c68642"/>
-      <stop offset="100%" stop-color="#a0622a"/>
+    <!-- Sphere head: upper-left bright, lower-right dark -->
+    <radialGradient id="hg" cx="0.37" cy="0.27" r="0.73">
+      <stop offset="0%"   stop-color="#b4ec56"/>
+      <stop offset="28%"  stop-color="#78c030"/>
+      <stop offset="100%" stop-color="#2c5c14"/>
+    </radialGradient>
+    <!-- Body: lighter left face → darker right shadow -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#88cc3e"/>
+      <stop offset="46%"  stop-color="#62a62a"/>
+      <stop offset="100%" stop-color="#346816"/>
     </linearGradient>
   </defs>
-  <!-- Head -->
-  <circle cx="16" cy="8.5" r="5.5" fill="url(#wood)"/>
-  <!-- Neck + body taper -->
-  <path d="M12.5 13.5 C10.5 16 9.5 18.5 9.5 21 L22.5 21 C22.5 18.5 21.5 16 19.5 13.5 Z" fill="url(#wood)"/>
-  <!-- Pedestal mid -->
-  <rect x="8" y="21" width="16" height="2.5" rx="1.25" fill="url(#wood)"/>
-  <!-- Base -->
-  <rect x="5.5" y="23.5" width="21" height="3" rx="1.5" fill="url(#wood)"/>
+
+  <!-- BODY + SHOULDER COLLAR
+       Path traces: right neck → collar protrusion right → bell base → collar protrusion left → left neck
+       The closing segment runs through the head (covered by the circle). -->
+  <path d="
+    M 63,27
+    C 64,32 65,38 65,46
+    L 84,52 L 84,61 L 66,66
+    C 67,72 72,84 78,98
+    C 83,110 88,118 91,123
+    C 93,127 50,130 50,130
+    C 50,130 7,127 9,123
+    C 12,118 17,110 22,98
+    C 28,84 33,72 34,66
+    L 16,61 L 16,52 L 35,46
+    C 35,38 36,32 37,27 Z
+  " fill="url(#bg)"/>
+
+  <!-- Left-face lighter overlay: the broad lit area on the front/left of the body -->
+  <ellipse cx="34" cy="96" rx="21" ry="30" fill="#92d444" opacity="0.38"/>
+  <!-- Left collar shoulder lit area -->
+  <ellipse cx="31" cy="55" rx="13" ry="7"  fill="#92d444" opacity="0.28"/>
+
+  <!-- HEAD SPHERE -->
+  <circle cx="50" cy="22" r="22" fill="url(#hg)"/>
+
+  <!-- SPECULAR HIGHLIGHT on head (bright oval in upper-left of sphere) -->
+  <ellipse cx="41" cy="13" rx="11" ry="8" fill="#d0f860" opacity="0.72"/>
 </svg>
