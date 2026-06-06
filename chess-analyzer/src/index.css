@@ -1,26 +1,36 @@
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&family=Roboto+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
-/* ── Design tokens ────────────────────────────────────────────────────────────
-   All color and typography values live here. Components reference these
-   variables rather than hard-coded values so the theme is a single source
-   of truth.
+/* ── Design tokens ─────────────────────────────────────────────────────────────
+   All color and typography values live here.
 ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — warm walnut wood */
-  --bg-primary:   #1c0f07;
-  --bg-secondary: #2e1a0e;
-  --bg-tertiary:  #3d2b1f;
-  --bg-surface:   #4e3829;
+  /* Backgrounds — rich dark walnut */
+  --bg-primary:   #2c1a0b;
+  --bg-secondary: #381f0d;
+  --bg-tertiary:  #44260f;
+  --bg-surface:   #543014;
 
   /* Text */
-  --text-primary:   #e8e6e3;
-  --text-secondary: #b0aca6;
+  --text-primary:   #ede9e4;
+  --text-secondary: #9a9188;
   --text-accent:    #ffffff;
 
-  /* Brand */
-  --brand-green:      #4d9e3f;
-  --brand-green-dark: #3a7a2f;
+  /* Brand green */
+  --brand-green:      #52b044;
+  --brand-green-dark: #3d8533;
+  --brand-green-glow: rgba(82, 176, 68, 0.35);
+
+  /* Gold / amber — luxury accent */
+  --gold:           #d4a843;
+  --gold-dark:      #9a7528;
+  --gold-glow:      rgba(212, 168, 67, 0.25);
+
+  /* Glassmorphism */
+  --glass-bg:     rgba(18, 10, 4, 0.72);
+  --glass-border: rgba(212, 168, 67, 0.14);
+  --glass-border-subtle: rgba(255, 255, 255, 0.07);
+  --glass-shine:  rgba(255, 255, 255, 0.03);
 
   /* Board — Classic Wood theme */
   --board-light:     #f0d9b5;
@@ -45,13 +55,10 @@
   /* Evaluation bar */
   --eval-white:  #ffffff;
   --eval-black:  #1a1a1a;
-  --eval-bar-bg: #302e2b;
+  --eval-bar-bg: #2a1e14;
 }
 
 /* ── Tailwind theme extension ─────────────────────────────────────────────────
-   @theme inline maps :root variables to Tailwind utility classes without
-   re-declaring them as CSS properties.  Results:
-     bg-bg-primary, text-text-primary, bg-brand-green, text-move-blunder, …
 ─────────────────────────────────────────────────────────────────────────── */
 @theme inline {
   /* Surfaces */
@@ -68,6 +75,7 @@
   /* Brand */
   --color-brand-green:      var(--brand-green);
   --color-brand-green-dark: var(--brand-green-dark);
+  --color-gold:             var(--gold);
 
   /* Move classifications */
   --color-move-brilliant:  var(--move-brilliant);
@@ -88,7 +96,7 @@
   --color-eval-bar-bg: var(--eval-bar-bg);
 
   /* Typography */
-  --font-sans: "Noto Sans", "Segoe UI", sans-serif;
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Roboto Mono", monospace;
 }
 
@@ -96,9 +104,10 @@
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: "Noto Sans", "Segoe UI", sans-serif;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
 /* PGN / algebraic notation rendered in monospace */
@@ -106,22 +115,18 @@ body {
   font-family: "Roboto Mono", monospace;
 }
 
-/* ── Component helpers ────────────────────────────────────────────────────── */
-
-/* Global scrollbar */
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: var(--bg-surface); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: var(--bg-surface); filter: brightness(1.3); }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-dark); }
 
-/* Move list Firefox override */
 .move-list {
   scrollbar-width: thin;
   scrollbar-color: var(--bg-surface) transparent;
 }
 
-/* Move buttons — all hover/active state managed here so inline styles
-   don't fight specificity with Tailwind utility hover classes */
+/* ── Move buttons ─────────────────────────────────────────────────────────── */
 .move-btn {
   border: none;
   border-left: 2px solid transparent;
@@ -141,19 +146,38 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--brand-green);
+  background: linear-gradient(135deg, var(--brand-green) 0%, var(--brand-green-dark) 100%);
   color: #ffffff;
   border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  border-radius: 8px;
+  padding: 9px 18px;
   font-size: 13px;
   font-weight: 600;
+  font-family: "Inter", sans-serif;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 12px var(--brand-green-glow), 0 1px 0 rgba(255,255,255,0.1) inset;
   white-space: nowrap;
 }
-.btn-primary:hover    { background-color: var(--brand-green-dark); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #5ec44f 0%, var(--brand-green) 100%);
+  box-shadow: 0 4px 20px var(--brand-green-glow), 0 1px 0 rgba(255,255,255,0.15) inset;
+  transform: translateY(-1px);
+}
+.btn-primary:hover::after { opacity: 1; }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .btn-secondary {
   display: inline-flex;
@@ -161,17 +185,25 @@ body {
   justify-content: center;
   background-color: transparent;
   color: var(--text-primary);
-  border: 1px solid var(--bg-surface);
-  border-radius: 4px;
-  padding: 8px 16px;
+  border: 1px solid var(--glass-border-subtle);
+  border-radius: 8px;
+  padding: 9px 18px;
   font-size: 13px;
   font-weight: 600;
+  font-family: "Inter", sans-serif;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
-.btn-secondary:hover    { background-color: var(--bg-tertiary); }
-.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary:hover {
+  background-color: var(--bg-tertiary);
+  border-color: rgba(212, 168, 67, 0.25);
+  color: var(--text-accent);
+  transform: translateY(-1px);
+}
+.btn-secondary:active { transform: translateY(0); }
+.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
 .btn-icon {
   display: inline-flex;
@@ -180,21 +212,86 @@ body {
   background-color: transparent;
   color: var(--text-secondary);
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 6px;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
-.btn-icon:hover { background-color: var(--bg-tertiary); }
+.btn-icon:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ── Glass card ───────────────────────────────────────────────────────────── */
+.glass-card {
+  /* Dark walnut with visible grain — background-color + background-image kept
+     separate so inline background-color overrides don't wipe the grain. */
+  background-color: rgba(22, 12, 4, 0.92);
+  background-image:
+    repeating-linear-gradient(
+      1.5deg,
+      transparent          0px,
+      transparent          3px,
+      rgba(0,0,0,0.06)     4px,
+      rgba(0,0,0,0.06)     5px,
+      transparent          6px
+    ),
+    repeating-linear-gradient(
+      -0.5deg,
+      transparent          0px,
+      transparent          17px,
+      rgba(0,0,0,0.08)     18px,
+      rgba(0,0,0,0.08)     19px,
+      transparent          21px
+    ),
+    repeating-linear-gradient(
+      2deg,
+      transparent              0px,
+      transparent              48px,
+      rgba(160,80,20,0.10)     49px,
+      rgba(160,80,20,0.10)     51px,
+      transparent              53px
+    );
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+/* ── Premium input ────────────────────────────────────────────────────────── */
+.input-premium {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border-subtle);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  color-scheme: dark;
+}
+.input-premium::placeholder { color: var(--text-secondary); opacity: 0.6; }
+.input-premium:focus {
+  outline: none;
+  border-color: rgba(82, 176, 68, 0.5);
+  background-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px rgba(82, 176, 68, 0.12), 0 0 16px rgba(82, 176, 68, 0.08);
+}
+.input-premium option {
+  background-color: #2c1a0b;
+  color: var(--text-primary);
+}
 
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .page-transition {
-  animation: page-fade-in 0.18s ease-out;
+  animation: page-fade-in 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes explanation-fade-in {
@@ -207,18 +304,114 @@ body {
 }
 
 @keyframes skeleton-pulse {
-  0%, 100% { opacity: 0.35; }
-  50%       { opacity: 0.6; }
+  0%, 100% { opacity: 0.25; }
+  50%       { opacity: 0.5; }
 }
 
 .skeleton-pulse {
-  animation: skeleton-pulse 1.4s ease-in-out infinite;
-  background-color: var(--bg-tertiary);
-  border-radius: 3px;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-surface) 50%, var(--bg-tertiary) 100%);
+  border-radius: 4px;
 }
 
 .explanation-fade-in {
-  animation: explanation-fade-in 0.2s ease-out;
+  animation: explanation-fade-in 0.22s ease-out;
+}
+
+/* Chess piece floating animation */
+@keyframes piece-float {
+  0%   { transform: translateY(0px)   rotate(0deg); }
+  25%  { transform: translateY(-14px) rotate(1.5deg); }
+  50%  { transform: translateY(-6px)  rotate(0deg); }
+  75%  { transform: translateY(-20px) rotate(-1.5deg); }
+  100% { transform: translateY(0px)   rotate(0deg); }
+}
+
+/* Particle rising animation */
+@keyframes particle-rise {
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  8%   { opacity: 1; }
+  85%  { opacity: 0.2; }
+  100% { transform: translateY(-80vh) scale(0.4); opacity: 0; }
+}
+
+/* Glow pulse */
+@keyframes glow-pulse {
+  0%,  100% { opacity: 0.5; }
+  50%        { opacity: 1; }
+}
+
+/* Shimmer sweep */
+@keyframes shimmer-sweep {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Gradient text shimmer */
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ede9e4 25%,
+    var(--gold) 50%,
+    #ede9e4 75%,
+    #ffffff 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-sweep 5s linear infinite;
+}
+
+/* Stat counter fade-up */
+@keyframes stat-appear {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.stat-appear {
+  animation: stat-appear 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* Board grid fade */
+@keyframes board-grid-in {
+  from { opacity: 0; transform: perspective(600px) rotateX(70deg) scaleX(1.5) translateY(20px); }
+  to   { opacity: 1; transform: perspective(600px) rotateX(65deg) scaleX(1.5); }
+}
+
+/* ── Wood grain finish ────────────────────────────────────────────────────── */
+/* Applied to Analyzer, Heatmap, Playground backgrounds. background-image
+   layers on top of whatever background-color the element already has. */
+.wood-grain {
+  background-image:
+    /* Fine grain — tight near-horizontal lines */
+    repeating-linear-gradient(
+      1.5deg,
+      transparent          0px,
+      transparent          3px,
+      rgba(0,0,0,0.045)    4px,
+      rgba(0,0,0,0.045)    5px,
+      transparent          6px
+    ),
+    /* Medium grain — one dark band every ~20px */
+    repeating-linear-gradient(
+      -0.5deg,
+      transparent          0px,
+      transparent          17px,
+      rgba(0,0,0,0.06)     18px,
+      rgba(0,0,0,0.06)     19px,
+      transparent          21px
+    ),
+    /* Warm amber ridge — every ~52px, lighter highlight */
+    repeating-linear-gradient(
+      2deg,
+      transparent              0px,
+      transparent              48px,
+      rgba(160,80,20,0.08)     49px,
+      rgba(160,80,20,0.08)     51px,
+      transparent              53px
+    );
 }
 
 /* ── Accessibility ────────────────────────────────────────────────────────── */
@@ -232,4 +425,17 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .page-transition,
+  .explanation-fade-in,
+  .stat-appear,
+  .text-shimmer,
+  [class*="piece-float"],
+  [class*="particle-rise"] {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
 }
