@@ -992,20 +992,44 @@ function EngineLines({ plyEval, isAnalyzed, expanded, onToggle }: EngineLinesPro
 
 function EmptyState({ engineError }: { engineError: string | null }) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center">
-      <p className="text-4xl" aria-hidden="true">♟</p>
-      <p className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>No games loaded</p>
-      <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
-        Fetch your Chess.com games on the Home page first, then come back here to analyze them.
-      </p>
+    <div className="flex flex-col items-center justify-center flex-1 gap-6 p-8 text-center">
+      <div
+        className="flex items-center justify-center w-16 h-16 rounded-2xl text-4xl"
+        style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+        }}
+        aria-hidden="true"
+      >
+        ♟
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="font-bold text-lg" style={{ color: 'var(--text-accent)', letterSpacing: '-0.02em' }}>
+          No games loaded
+        </p>
+        <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          Fetch your Chess.com games on the Home page first, then come back here to analyze them.
+        </p>
+      </div>
       <Link to="/" className="btn-primary text-sm">
         Go to Home
       </Link>
       {engineError && (
-        <div role="alert" className="mt-2 w-full max-w-sm bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
+        <div
+          role="alert"
+          className="mt-2 w-full max-w-sm rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: 'rgba(204,50,50,0.1)',
+            border: '1px solid rgba(204,50,50,0.3)',
+            color: '#f87171',
+          }}
+        >
           <p className="font-semibold mb-1">Chess engine failed to load</p>
-          <p>{engineError}</p>
-          <p className="mt-1 text-red-400/70 text-xs">Analysis will be unavailable. Try refreshing the page.</p>
+          <p style={{ opacity: 0.8 }}>{engineError}</p>
+          <p className="mt-1 text-xs" style={{ opacity: 0.6 }}>
+            Analysis will be unavailable. Try refreshing the page.
+          </p>
         </div>
       )}
     </div>
@@ -1277,7 +1301,7 @@ export default function Analyzer() {
 
   return (
     <div
-      className="flex h-[calc(100vh-52px)] overflow-hidden"
+      className="wood-grain flex h-[calc(100vh-60px)] overflow-hidden"
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
 
@@ -1285,23 +1309,28 @@ export default function Analyzer() {
       {leftOpen ? (
         <aside
           aria-label="Game list"
-          className="shrink-0 flex flex-col p-3 overflow-hidden"
+          className="wood-grain shrink-0 flex flex-col p-3 overflow-hidden"
           style={{
             width: 288,
             backgroundColor: 'var(--bg-secondary)',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
+            borderRight: '1px solid rgba(255,255,255,0.05)',
           }}
         >
           <div className="flex items-center justify-between mb-2 shrink-0">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+            <h2
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: 'var(--text-secondary)', letterSpacing: '0.08em' }}
+            >
               Games
             </h2>
             <button
               onClick={() => setLeftOpen(false)}
               aria-label="Collapse game list"
               title="Collapse game list"
-              className="p-1 rounded text-sm transition-colors"
+              className="p-1 rounded text-sm transition-all duration-150 cursor-pointer"
               style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
               ◀
             </button>
@@ -1319,7 +1348,7 @@ export default function Analyzer() {
         </aside>
       ) : (
         <div
-          className="shrink-0 flex flex-col items-center pt-2"
+          className="wood-grain shrink-0 flex flex-col items-center pt-2"
           style={{
             width: 32,
             backgroundColor: 'var(--bg-secondary)',
@@ -1341,7 +1370,7 @@ export default function Analyzer() {
       {/* ── Center: board ───────────────────────────────────────────────── */}
       <main
         aria-label="Chess board and controls"
-        className="flex flex-col items-center justify-start gap-2 p-4 overflow-y-auto flex-1 min-w-0"
+        className="wood-grain flex flex-col items-center justify-start gap-2 p-4 overflow-y-auto flex-1 min-w-0"
         style={{ backgroundColor: 'var(--bg-primary)' }}
       >
         {/* Everything in the center is constrained to a max-width so the board
@@ -1604,11 +1633,11 @@ export default function Analyzer() {
       {plies.length > 0 && (
         <aside
           aria-label="Move analysis panel"
-          className="shrink-0 flex flex-col overflow-hidden"
+          className="wood-grain shrink-0 flex flex-col overflow-hidden"
           style={{
             width: RIGHT_WIDTH,
             backgroundColor: 'var(--bg-secondary)',
-            borderLeft: '1px solid rgba(255,255,255,0.06)',
+            borderLeft: '1px solid rgba(255,255,255,0.05)',
           }}
         >
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">

@@ -481,34 +481,62 @@ export default function Playground() {
 
   return (
     <div
-      className="flex h-[calc(100vh-52px)] overflow-hidden"
+      className="wood-grain flex h-[calc(100vh-60px)] overflow-hidden"
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       {/* ── Center: board area ───────────────────────────────────────────── */}
       <main
         aria-label="Playground chess board"
-        className="flex flex-col items-center justify-start gap-2 p-4 overflow-y-auto flex-1 min-w-0"
+        className="wood-grain flex flex-col items-center justify-start gap-2 p-4 overflow-y-auto flex-1 min-w-0"
         style={{ backgroundColor: 'var(--bg-primary)' }}
       >
         <div className="flex flex-col w-full mx-auto" style={{ maxWidth: boardAreaMaxWidth }}>
 
           {/* Mode toggle */}
-          <div className="flex justify-center mb-3 gap-1">
+          <div
+            className="flex justify-center mb-3"
+            style={{
+              padding: 3,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              display: 'inline-flex',
+              alignSelf: 'center',
+              width: 'fit-content',
+              margin: '0 auto 12px',
+            }}
+          >
             {(['bot', 'freeplay'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => handleModeSwitch(mode)}
                 aria-pressed={playMode === mode}
                 style={{
-                  padding: '5px 18px',
-                  borderRadius: 4,
+                  padding: '6px 20px',
+                  borderRadius: 7,
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: 13,
-                  fontWeight: 500,
-                  background: playMode === mode ? 'var(--brand-green)' : 'var(--bg-tertiary)',
+                  fontWeight: 600,
+                  background: playMode === mode
+                    ? 'linear-gradient(135deg, var(--brand-green) 0%, var(--brand-green-dark) 100%)'
+                    : 'transparent',
                   color: playMode === mode ? '#fff' : 'var(--text-secondary)',
-                  transition: 'background 0.15s ease, color 0.15s ease',
+                  boxShadow: playMode === mode ? '0 1px 8px rgba(82,176,68,0.4)' : 'none',
+                  transition: 'all 0.18s ease',
+                  letterSpacing: '-0.01em',
+                }}
+                onMouseEnter={e => {
+                  if (playMode !== mode) {
+                    e.currentTarget.style.color = 'var(--text-primary)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (playMode !== mode) {
+                    e.currentTarget.style.color = 'var(--text-secondary)';
+                    e.currentTarget.style.background = 'transparent';
+                  }
                 }}
               >
                 {mode === 'bot' ? 'Play Bot' : 'Free Play'}
@@ -518,21 +546,16 @@ export default function Playground() {
 
           {/* Bot strength selector (bot mode only) */}
           {playMode === 'bot' && (
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Bot Strength</span>
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Bot Strength
+              </span>
               <select
                 value={pendingBotElo}
                 onChange={e => setPendingBotElo(Number(e.target.value))}
                 aria-label="Bot strength"
-                style={{
-                  background: 'var(--bg-tertiary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 4,
-                  padding: '3px 8px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
+                className="input-premium cursor-pointer"
+                style={{ padding: '4px 10px', fontSize: 12 }}
               >
                 {ELO_PRESETS.map(preset => (
                   <option key={preset.elo} value={preset.elo}>
@@ -541,7 +564,7 @@ export default function Playground() {
                 ))}
               </select>
               {pendingBotElo !== activeElo && (
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', opacity: 0.7 }}>
                   applies next game
                 </span>
               )}
@@ -550,22 +573,46 @@ export default function Playground() {
 
           {/* Color picker (bot mode, before game starts) */}
           {showColorPicker && (
-            <div className="flex flex-col items-center gap-2 mb-3">
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Play as</span>
+            <div className="flex flex-col items-center gap-3 mb-3">
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Play as
+              </span>
               <div className="flex gap-3">
                 {(['w', 'b'] as const).map(color => (
                   <button
                     key={color}
                     onClick={() => handleColorSelect(color)}
+                    className="cursor-pointer"
                     style={{
-                      padding: '8px 24px',
-                      borderRadius: 4,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'var(--bg-surface)',
+                      padding: '10px 26px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: 'rgba(255,255,255,0.04)',
                       color: 'var(--text-primary)',
-                      cursor: 'pointer',
                       fontSize: 14,
-                      fontWeight: 500,
+                      fontWeight: 600,
+                      letterSpacing: '-0.01em',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'rgba(82,176,68,0.1)';
+                      e.currentTarget.style.borderColor = 'rgba(82,176,68,0.3)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 4px 16px rgba(82,176,68,0.15)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
                     {color === 'w' ? '♔ White' : '♚ Black'}
@@ -787,46 +834,50 @@ export default function Playground() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: 'rgba(0,0,0,0.55)',
+                    backgroundColor: 'rgba(0,0,0,0.65)',
+                    backdropFilter: 'blur(6px)',
+                    WebkitBackdropFilter: 'blur(6px)',
                     borderRadius: 4,
                     zIndex: 20,
                   }}
                 >
                   <div
                     style={{
-                      backgroundColor: 'var(--bg-secondary)',
-                      borderRadius: 8,
-                      padding: '24px 32px',
+                      background: 'rgba(18, 10, 4, 0.92)',
+                      borderRadius: 16,
+                      padding: '28px 36px',
                       textAlign: 'center',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                      border: '1px solid rgba(212,168,67,0.18)',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
                     }}
                   >
-                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-accent)', marginBottom: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 22, fontWeight: 800, color: 'var(--text-accent)',
+                        marginBottom: 6, letterSpacing: '-0.03em',
+                      }}
+                    >
                       {gameResult!.message}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>
-                      {gameResult!.winner === 'player' ? 'Well played!' : gameResult!.winner === 'bot' ? 'Better luck next time.' : 'Game drawn.'}
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24, opacity: 0.8 }}>
+                      {gameResult!.winner === 'player'
+                        ? 'Well played!'
+                        : gameResult!.winner === 'bot'
+                          ? 'Better luck next time.'
+                          : 'Game drawn.'}
                     </div>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                       <button
                         onClick={handlePlayAgain}
-                        style={{
-                          padding: '8px 20px', borderRadius: 4, border: 'none',
-                          background: 'var(--brand-green)', color: '#fff',
-                          fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                        }}
+                        className="btn-primary cursor-pointer"
+                        style={{ padding: '9px 22px', borderRadius: 9, fontSize: 13, fontWeight: 700 }}
                       >
                         Play Again
                       </button>
                       <button
                         onClick={handleReviewGame}
-                        style={{
-                          padding: '8px 20px', borderRadius: 4,
-                          border: '1px solid rgba(255,255,255,0.2)',
-                          background: 'transparent', color: 'var(--text-primary)',
-                          fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                        }}
+                        className="btn-secondary cursor-pointer"
+                        style={{ padding: '9px 22px', borderRadius: 9, fontSize: 13 }}
                       >
                         Review Game
                       </button>
@@ -1009,11 +1060,11 @@ export default function Playground() {
       {/* ── Right: best moves + move history ────────────────────────────── */}
       <aside
         aria-label="Analysis panel"
-        className="shrink-0 flex flex-col overflow-hidden"
+        className="wood-grain shrink-0 flex flex-col overflow-hidden"
         style={{
           width: RIGHT_WIDTH,
           backgroundColor: 'var(--bg-secondary)',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
+          borderLeft: '1px solid rgba(255,255,255,0.05)',
         }}
       >
         {/* ── Best Moves ───────────────────────────────────────────────── */}

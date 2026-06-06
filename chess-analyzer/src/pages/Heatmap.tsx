@@ -41,9 +41,14 @@ function PillGroup<T extends string>({
       role="group"
       aria-label={groupLabel}
       className="flex rounded-lg overflow-hidden"
-      style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+      style={{
+        border: '1px solid rgba(255,255,255,0.07)',
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        padding: 2,
+        gap: 2,
+      }}
     >
-      {options.map((opt, i) => {
+      {options.map((opt) => {
         const active = value === opt.value;
         return (
           <button
@@ -51,17 +56,25 @@ function PillGroup<T extends string>({
             onClick={() => onChange(opt.value)}
             aria-pressed={active}
             aria-label={`${groupLabel}: ${opt.label}`}
-            className="px-3 py-1.5 text-xs font-medium transition-colors"
+            className="px-3 py-1.5 text-xs font-semibold transition-all duration-150 cursor-pointer rounded-md"
             style={{
-              borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.08)' : undefined,
-              backgroundColor: active ? 'var(--brand-green)' : 'var(--bg-tertiary)',
+              backgroundColor: active
+                ? 'var(--brand-green)'
+                : 'transparent',
               color: active ? '#fff' : 'var(--text-secondary)',
+              boxShadow: active ? '0 1px 8px rgba(82,176,68,0.4)' : 'none',
             }}
             onMouseEnter={e => {
-              if (!active) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+              if (!active) {
+                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }
             }}
             onMouseLeave={e => {
-              if (!active) e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+              if (!active) {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }
             }}
           >
             {opt.label}
@@ -169,14 +182,21 @@ export default function Heatmap() {
 
   return (
     <div
-      className="flex flex-col items-center gap-6 p-6 min-h-[calc(100vh-52px)]"
+      className="wood-grain flex flex-col items-center gap-7 px-6 py-10 min-h-[calc(100vh-60px)]"
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       {/* Header */}
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold" style={{ color: 'var(--text-accent)' }}>Move Heatmap</h2>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Visualise square activity across {games.length} loaded game{games.length !== 1 ? 's' : ''}.
+      <div className="text-center flex flex-col gap-2">
+        <h2
+          className="font-extrabold tracking-tight"
+          style={{ fontSize: 28, color: 'var(--text-accent)', letterSpacing: '-0.03em' }}
+        >
+          Move Heatmap
+        </h2>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Visualise square activity across{' '}
+          <span style={{ color: 'var(--brand-green)', fontWeight: 600 }}>{games.length}</span>{' '}
+          loaded game{games.length !== 1 ? 's' : ''}.
         </p>
       </div>
 
@@ -184,13 +204,27 @@ export default function Heatmap() {
       {error   && <p className="text-sm" style={{ color: 'var(--move-blunder)' }}>{error}</p>}
 
       {!loading && !error && games.length === 0 && (
-        <div className="flex flex-col items-center gap-4 mt-16 text-center" role="status">
-          <p className="text-4xl select-none" aria-hidden="true">♟</p>
-          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>No games loaded</p>
-          <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
-            Fetch games for a player first to explore their move heatmap.
-          </p>
-          <Link to="/" className="btn-primary mt-2 text-sm">
+        <div className="flex flex-col items-center gap-5 mt-12 text-center" role="status">
+          <div
+            className="flex items-center justify-center w-16 h-16 rounded-2xl text-4xl"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+            }}
+            aria-hidden="true"
+          >
+            ♟
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p className="font-bold text-lg" style={{ color: 'var(--text-accent)', letterSpacing: '-0.02em' }}>
+              No games loaded
+            </p>
+            <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
+              Fetch games for a player first to explore their move heatmap.
+            </p>
+          </div>
+          <Link to="/" className="btn-primary mt-1 text-sm">
             Go to Home
           </Link>
         </div>
@@ -199,15 +233,24 @@ export default function Heatmap() {
       {games.length > 0 && (
         <>
           {/* Filter bar */}
-          <div className="flex flex-wrap gap-3 justify-center">
+          <div
+            className="flex flex-wrap gap-4 justify-center p-4 rounded-2xl"
+            style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
             {[
               { label: 'Piece',       el: <PillGroup options={PIECE_OPTIONS}    value={pieceFilter}  onChange={setPieceFilter}  groupLabel="Piece" /> },
               { label: 'Color',       el: <PillGroup options={COLOR_OPTIONS}    value={colorFilter}  onChange={setColorFilter}  groupLabel="Color" /> },
               { label: 'Square type', el: <PillGroup options={MOVETYPE_OPTIONS} value={moveType}     onChange={setMoveType}     groupLabel="Square type" /> },
               { label: 'Result',      el: <PillGroup options={RESULT_OPTIONS}   value={resultFilter} onChange={setResultFilter} groupLabel="Result" /> },
             ].map(({ label, el }) => (
-              <div key={label} className="flex flex-col items-start gap-1">
-                <span className="text-xs font-medium px-1" style={{ color: 'var(--text-secondary)' }}>
+              <div key={label} className="flex flex-col items-start gap-1.5">
+                <span
+                  className="text-xs font-semibold uppercase tracking-widest px-1"
+                  style={{ color: 'var(--text-secondary)', letterSpacing: '0.08em', opacity: 0.7 }}
+                >
                   {label}
                 </span>
                 {el}
@@ -216,8 +259,11 @@ export default function Heatmap() {
           </div>
 
           {/* Move count */}
-          <p className="text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
-            {totalMoves.toLocaleString()} move{totalMoves !== 1 ? 's' : ''} matching current filters
+          <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)', opacity: 0.55 }}>
+            <span style={{ color: 'var(--gold)', opacity: 0.9, fontWeight: 600 }}>
+              {totalMoves.toLocaleString()}
+            </span>
+            {' '}move{totalMoves !== 1 ? 's' : ''} matching current filters
           </p>
 
           <HeatmapGrid data={heatmapData} />
